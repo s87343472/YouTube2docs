@@ -9,7 +9,9 @@
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:api": "ts-node src/scripts/testAPIs.ts",
+    "test:quick": "ts-node -e \"import('./src/services/apiTest').then(m => m.runAllAPITests())\""
   },
   "keywords": [],
   "author": "",
