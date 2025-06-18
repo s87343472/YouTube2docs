@@ -52,22 +52,32 @@ async function registerRoutes() {
 
   // API routes prefix
   await fastify.register(async function (fastify) {
-    // Auth routes
+    // Import and register video routes
+    const { videoRoutes } = await import('./routes/videoRoutes')
+    await fastify.register(videoRoutes)
+    
+    // Auth routes (placeholder)
     fastify.get('/auth/me', async (request, reply) => {
-      return { message: 'Auth endpoint - coming soon' }
+      return { 
+        message: 'Auth endpoint - coming soon',
+        user: null,
+        authenticated: false
+      }
     })
 
-    // Video processing routes
-    fastify.post('/videos/process', async (request, reply) => {
-      return { message: 'Video processing endpoint - coming soon' }
-    })
-
-    fastify.get('/videos/:id/status', async (request, reply) => {
-      return { message: 'Video status endpoint - coming soon' }
-    })
-
-    fastify.get('/videos/:id/result', async (request, reply) => {
-      return { message: 'Video result endpoint - coming soon' }
+    // System info
+    fastify.get('/system/info', async (request, reply) => {
+      return {
+        status: 'ok',
+        version: '1.0.0',
+        features: {
+          audioProcessing: true,
+          transcription: true,
+          contentAnalysis: true,
+          knowledgeGraphs: true // 已实现
+        },
+        timestamp: new Date().toISOString()
+      }
     })
   }, { prefix: '/api' })
 }

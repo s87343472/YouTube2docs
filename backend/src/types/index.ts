@@ -77,36 +77,52 @@ export interface Chapter {
 }
 
 export interface KnowledgeGraph {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
+  nodes: KnowledgeNode[]
+  edges: KnowledgeEdge[]
+  metadata?: {
+    totalNodes: number
+    totalEdges: number
+    complexity: number
+    coverage: number
+    learningPath: string[]
+    coreconcepts: string[]
+    generatedAt: string
+  }
 }
 
-export interface GraphNode {
+export interface KnowledgeNode {
   id: string
   label: string
-  definition: string
-  aiExplanation?: string
-  externalLinks?: string[]
-  category?: string
+  type: 'concept' | 'skill' | 'fact' | 'process' | 'application'
+  description: string
+  importance: number
+  complexity: number
+  prerequisites?: string[]
+  applications?: string[]
+  relatedTerms?: string[]
+  timeRange?: string
+  examples?: string[]
 }
 
-export interface GraphEdge {
-  from: string
-  to: string
-  type: 'relates_to' | 'depends_on' | 'enables' | 'example_of'
-  strength?: number
+export interface KnowledgeEdge {
+  id: string
+  source: string
+  target: string
+  type: 'prerequisite' | 'supports' | 'applies_to' | 'extends' | 'conflicts' | 'similar'
+  strength: number
+  description: string
+  bidirectional?: boolean
 }
 
 export interface StudyCard {
   id: string
-  type: 'concept_overview' | 'chapter_summary' | 'mastery_checklist' | 'quick_review'
+  type: 'concept' | 'definition' | 'example' | 'question' | 'summary'
   title: string
-  content: string | string[]
-  metadata?: {
-    difficulty?: string
-    estimatedTime?: string
-    category?: string
-  }
+  content: string
+  relatedConcepts: string[]
+  difficulty: 'easy' | 'medium' | 'hard'
+  estimatedTime: number
+  timeReference?: string
 }
 
 // API request/response types
