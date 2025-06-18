@@ -33,9 +33,18 @@ export const Header = () => {
             >
               关于
             </Link>
-            <button className="btn-primary">
+            <Link 
+              to="/api-test" 
+              className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+            >
+              API测试
+            </Link>
+            <Link 
+              to="/process-demo" 
+              className="btn-primary text-white hover:text-white no-underline"
+            >
               立即体验
-            </button>
+            </Link>
           </nav>
 
           {/* Mobile menu button */}
@@ -67,10 +76,17 @@ export const Header = () => {
               >
                 关于
               </Link>
+              <Link
+                to="/api-test"
+                className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                API测试
+              </Link>
               <div className="px-3 py-2">
-                <button className="btn-primary w-full">
+                <Link to="/process-demo" className="btn-primary w-full block text-center text-white hover:text-white no-underline">
                   立即体验
-                </button>
+                </Link>
               </div>
             </div>
           </div>
