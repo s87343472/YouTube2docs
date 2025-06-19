@@ -2,6 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { initGroq, hasGroqKey, API_CONFIG } from '../config/apis'
 import { TranscriptionResult, TranscriptionSegment, AudioExtractionResult } from '../types'
+import { AudioProcessor } from './audioProcessor'
 
 /**
  * 音频转录服务类
@@ -19,8 +20,7 @@ export class TranscriptionService {
     language?: string
   ): Promise<TranscriptionResult> {
     if (!hasGroqKey()) {
-      console.log('⚠️ Groq API key not configured, using mock transcription')
-      return this.generateMockTranscription(audioPath)
+      throw new Error('Groq API key required for transcription but not configured')
     }
 
     try {
@@ -37,9 +37,7 @@ export class TranscriptionService {
 
     } catch (error) {
       console.error('❌ Transcription failed:', error)
-      
-      // 失败时返回模拟转录结果
-      return this.generateMockTranscription(audioPath)
+      throw error
     }
   }
 
@@ -68,7 +66,7 @@ export class TranscriptionService {
         const transcription = await groq.audio.transcriptions.create({
           file: audioFile,
           model: API_CONFIG.GROQ.MODEL,
-          language: language || 'auto', // 自动检测语言
+          language: language || 'zh', // 默认使用中文，Groq不支持auto语言检测
           response_format: 'verbose_json', // 获取详细信息包括时间戳
           temperature: 0.0 // 最高准确性
         })
@@ -206,10 +204,14 @@ export class TranscriptionService {
       if (audioResult.size > API_CONFIG.GROQ.MAX_FILE_SIZE) {
         console.log('📂 Audio file too large, splitting into segments')
         
-        // 这里应该调用AudioProcessor的分割功能
-        // 为了简化，我们模拟分割后的文件路径
-        const segmentPaths = [audioResult.audioPath] // 实际应该是分割后的多个文件
+        // 使用AudioProcessor分割大文件
+        const segmentPaths = await AudioProcessor.splitLargeAudio(audioResult.audioPath, videoId)
         
+        if (segmentPaths.length === 0) {
+          throw new Error('Failed to split audio file into segments')
+        }
+        
+        console.log(`📝 Split audio into ${segmentPaths.length} segments`)
         return await this.transcribeMultipleFiles(segmentPaths, language)
       } else {
         return await this.transcribeAudio(audioResult.audioPath, language)
@@ -217,7 +219,7 @@ export class TranscriptionService {
 
     } catch (error) {
       console.error('❌ Smart transcription failed:', error)
-      return this.generateMockTranscription(audioResult.audioPath)
+      throw error
     }
   }
 
@@ -270,115 +272,7 @@ export class TranscriptionService {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
-  /**
-   * 生成模拟转录结果
-   */
-  private static generateMockTranscription(audioPath: string): TranscriptionResult {
-    const fileName = path.basename(audioPath, path.extname(audioPath))
-    
-    // 根据文件名生成相应的模拟内容
-    let mockText = ''
-    let language = 'en'
 
-    if (fileName.includes('react') || fileName.toLowerCase().includes('react')) {
-      mockText = this.getMockReactTranscription()
-    } else if (fileName.includes('python') || fileName.toLowerCase().includes('python')) {
-      mockText = this.getMockPythonTranscription()
-      language = 'en'
-    } else {
-      mockText = this.getGenericMockTranscription()
-    }
-
-    // 生成模拟的分段信息
-    const segments = this.generateMockSegments(mockText)
-
-    return {
-      text: mockText,
-      language: language,
-      confidence: 0.92,
-      segments: segments
-    }
-  }
-
-  /**
-   * 生成React相关的模拟转录
-   */
-  private static getMockReactTranscription(): string {
-    return `Welcome to this comprehensive React Hooks tutorial. In this video, we're going to cover everything you need to know about React Hooks, including useState, useEffect, and useContext.
-
-First, let's start with useState. useState is a Hook that lets you add React state to function components. Before Hooks, you could only use state in class components, but now with useState, you can use state in function components as well.
-
-Here's how useState works. You call useState with the initial state value, and it returns an array with two elements: the current state value and a function to update it. For example, const [count, setCount] = useState(0).
-
-Now let's move on to useEffect. useEffect is a Hook that lets you perform side effects in function components. It serves the same purpose as componentDidMount, componentDidUpdate, and componentWillUnmount combined in React class components.
-
-The basic syntax is useEffect with a function as the first argument. This function will run after every completed render. You can also provide a second argument, which is an array of dependencies. The effect will only re-run if one of the dependencies has changed.
-
-Finally, let's talk about useContext. useContext is a Hook that lets you consume React Context without having to wrap your component in a Context Consumer. It makes your code cleaner and easier to read.
-
-To use useContext, you first need to create a context using React.createContext, then you can consume it in any component using the useContext Hook.
-
-These are the three most commonly used Hooks in React, and mastering them will make you much more productive when building React applications.`
-  }
-
-  /**
-   * 生成Python相关的模拟转录
-   */
-  private static getMockPythonTranscription(): string {
-    return `Welcome to this Python data analysis tutorial using pandas. In this video, we'll explore how to work with DataFrames, clean data, and perform various data analysis operations.
-
-Pandas is one of the most important libraries for data analysis in Python. It provides data structures like DataFrame and Series that make it easy to work with structured data.
-
-Let's start by importing pandas. The convention is to import it as pd: import pandas as pd. Now we can create a DataFrame from various sources like CSV files, dictionaries, or lists.
-
-Data cleaning is a crucial part of data analysis. We'll learn how to handle missing values using methods like dropna() and fillna(). We'll also see how to remove duplicates and fix data types.
-
-Next, we'll explore data manipulation techniques. This includes filtering data, grouping by columns, and performing aggregations like sum, mean, and count. The groupby() method is particularly powerful for this.
-
-We'll also cover data visualization using matplotlib and seaborn. Creating charts and plots is essential for understanding your data and communicating insights.
-
-Finally, we'll look at some advanced pandas techniques like merging DataFrames, pivot tables, and time series analysis. These skills will help you handle more complex data analysis tasks.`
-  }
-
-  /**
-   * 生成通用的模拟转录
-   */
-  private static getGenericMockTranscription(): string {
-    return `Welcome to this educational video. Today we're going to learn about important concepts and practical applications.
-
-Throughout this tutorial, we'll cover fundamental principles and advanced techniques that will help you understand the subject better. We'll start with the basics and gradually move to more complex topics.
-
-The key to mastering any skill is practice and understanding the underlying concepts. We'll provide plenty of examples and real-world applications to help you grasp these concepts effectively.
-
-By the end of this video, you'll have a solid understanding of the material and be able to apply what you've learned in practical situations. Let's get started with our first topic.`
-  }
-
-  /**
-   * 生成模拟的分段信息
-   */
-  private static generateMockSegments(text: string): TranscriptionSegment[] {
-    const sentences = text.split('. ').filter(s => s.trim().length > 0)
-    const segments: TranscriptionSegment[] = []
-    
-    let currentTime = 0
-    const averageWordsPerMinute = 150 // 平均语速
-    
-    sentences.forEach((sentence, index) => {
-      const wordCount = sentence.split(' ').length
-      const duration = (wordCount / averageWordsPerMinute) * 60 // 转换为秒
-      
-      segments.push({
-        start: Math.round(currentTime * 100) / 100,
-        end: Math.round((currentTime + duration) * 100) / 100,
-        text: sentence.trim() + (index < sentences.length - 1 ? '.' : ''),
-        confidence: 0.85 + Math.random() * 0.1 // 0.85-0.95之间的随机置信度
-      })
-      
-      currentTime += duration + 0.5 // 添加短暂停顿
-    })
-    
-    return segments
-  }
 
   /**
    * 获取转录统计信息

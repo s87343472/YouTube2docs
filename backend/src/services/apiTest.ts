@@ -1,60 +1,51 @@
-import { initOpenAI, initGroq, hasOpenAIKey, hasGroqKey, testAPIConnections } from '../config/apis'
+import { initGroq, hasGroqKey, hasGeminiKey, testAPIConnections } from '../config/apis'
 import { testDatabaseConnection } from '../config/database'
 
 /**
- * 测试OpenAI API连接和功能
+ * 测试Gemini API连接和功能
  */
-export async function testOpenAIAPI() {
-  console.log('🔍 Testing OpenAI API...')
+export async function testGeminiAPI() {
+  console.log('🔍 Testing Gemini API...')
   
-  if (!hasOpenAIKey()) {
-    console.log('⚠️  OpenAI API key not configured, using mock data')
+  if (!hasGeminiKey()) {
+    console.log('❌ Gemini API key not configured')
     return {
-      status: 'mock',
+      status: 'failed',
       message: 'API key not configured'
     }
   }
   
   try {
-    const openai = initOpenAI()
-    // 测试模型列表
-    const models = await openai.models.list()
-    const gpt4Models = models.data.filter(model => model.id.includes('gpt-4'))
-    
-    console.log(`✅ OpenAI API connected successfully`)
-    console.log(`📊 Available models: ${models.data.length}`)
-    console.log(`🤖 GPT-4 models: ${gpt4Models.length}`)
-    
-    // 测试基本聊天完成
-    const testCompletion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // 使用更便宜的模型进行测试
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个测试助手，请简短回复。'
-        },
-        {
-          role: 'user',
-          content: '请用一句话介绍React Hooks。'
-        }
-      ],
-      max_tokens: 100,
-      temperature: 0.3
+    const { initGemini, API_CONFIG } = await import('../config/apis')
+    const gemini = initGemini()
+    const model = gemini.getGenerativeModel({ 
+      model: API_CONFIG.GEMINI.MODEL,
+      generationConfig: {
+        temperature: API_CONFIG.GEMINI.TEMPERATURE,
+        maxOutputTokens: 100
+      }
     })
     
+    console.log(`✅ Gemini API connected successfully`)
+    console.log(`🤖 Using model: ${API_CONFIG.GEMINI.MODEL}`)
+    
+    // 测试基本内容生成
+    const testPrompt = '请用一句话介绍React Hooks。'
+    const result = await model.generateContent(testPrompt)
+    const response = await result.response
+    const content = response.text()
+    
     console.log(`💬 Test completion successful:`)
-    console.log(`📝 Response: ${testCompletion.choices[0].message.content}`)
-    console.log(`📊 Tokens used: ${testCompletion.usage?.total_tokens}`)
+    console.log(`📝 Response: ${content}`)
     
     return {
       status: 'success',
-      models: gpt4Models.length,
-      testResponse: testCompletion.choices[0].message.content,
-      tokensUsed: testCompletion.usage?.total_tokens
+      model: API_CONFIG.GEMINI.MODEL,
+      testResponse: content
     }
     
   } catch (error) {
-    console.error('❌ OpenAI API test failed:', error)
+    console.error('❌ Gemini API test failed:', error)
     return {
       status: 'failed',
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -69,9 +60,9 @@ export async function testGroqAPI() {
   console.log('🔍 Testing Groq API...')
   
   if (!hasGroqKey()) {
-    console.log('⚠️  Groq API key not configured, using mock data')
+    console.log('❌ Groq API key not configured')
     return {
-      status: 'mock',
+      status: 'failed',
       message: 'API key not configured'
     }
   }
@@ -106,34 +97,31 @@ export async function testGroqAPI() {
 }
 
 /**
- * 测试YouTube视频信息提取（模拟）
+ * 测试YouTube视频信息提取（真实）
  */
 export async function testYouTubeExtraction() {
   console.log('🔍 Testing YouTube video extraction...')
   
   try {
-    // 模拟YouTube视频信息提取
-    // 在实际应用中，这里会使用yt-dlp或YouTube API
+    const { YouTubeService } = await import('./youtubeService')
     
-    const mockVideoInfo = {
-      id: 'demo123',
-      title: 'React Hooks Complete Tutorial - useState, useEffect, useContext',
-      channel: 'Programming with Mosh',
-      duration: 5130, // 85分30秒
-      views: '1.2M',
-      description: 'Complete guide to React Hooks including useState, useEffect, and useContext...',
-      upload_date: '2023-06-15',
-      thumbnail: 'https://img.youtube.com/vi/demo123/maxresdefault.jpg'
+    // 使用真实的YouTube URL测试
+    const testUrl = 'https://www.youtube.com/watch?v=LF9sd-2jCoY'
+    
+    if (!YouTubeService.isValidYouTubeURL(testUrl)) {
+      throw new Error('Invalid test URL')
     }
     
+    const videoInfo = await YouTubeService.getDetailedVideoInfo(testUrl)
+    
     console.log(`✅ Video extraction test successful`)
-    console.log(`📺 Title: ${mockVideoInfo.title}`)
-    console.log(`👤 Channel: ${mockVideoInfo.channel}`)
-    console.log(`⏱️ Duration: ${Math.floor(mockVideoInfo.duration / 60)}:${mockVideoInfo.duration % 60}`)
+    console.log(`📺 Title: ${videoInfo.title}`)
+    console.log(`👤 Channel: ${videoInfo.channel}`)
+    console.log(`⏱️ Duration: ${videoInfo.duration}`)
     
     return {
       status: 'success',
-      videoInfo: mockVideoInfo
+      videoInfo: videoInfo
     }
     
   } catch (error) {
@@ -151,22 +139,27 @@ export async function testYouTubeExtraction() {
 export async function testContentGeneration() {
   console.log('🔍 Testing content generation...')
   
-  if (!hasOpenAIKey()) {
-    console.log('⚠️ OpenAI API key not configured, using mock data')
+  if (!hasGeminiKey()) {
+    console.log('❌ Gemini API key not configured')
     return {
-      status: 'mock',
-      content: mockLearningContent
+      status: 'failed',
+      message: 'API key not configured'
     }
   }
   
   try {
-    const openai = initOpenAI()
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `你是一个专业的学习资料生成助手。根据给定的视频转录内容，生成结构化的学习资料。
+    const { initGemini, API_CONFIG } = await import('../config/apis')
+    const gemini = initGemini()
+    const model = gemini.getGenerativeModel({ 
+      model: API_CONFIG.GEMINI.MODEL,
+      generationConfig: {
+        temperature: API_CONFIG.GEMINI.TEMPERATURE,
+        maxOutputTokens: 500,
+        responseMimeType: "application/json"
+      }
+    })
+    
+    const systemPrompt = `你是一个专业的学习资料生成助手。根据给定的视频转录内容，生成结构化的学习资料。
 
 请按照以下JSON格式返回：
 {
@@ -182,25 +175,21 @@ export async function testContentGeneration() {
     }
   ]
 }`
-        },
-        {
-          role: 'user',
-          content: `视频标题：React Hooks Complete Tutorial
+
+    const userPrompt = `视频标题：React Hooks Complete Tutorial
 视频内容：React Hooks是React 16.8版本引入的新特性，它让你可以在不编写class的情况下使用state以及其他的React特性。主要包括useState用于状态管理，useEffect用于副作用处理，useContext用于上下文消费等。`
-        }
-      ],
-      max_tokens: 500,
-      temperature: 0.3
-    })
     
-    const generatedContent = completion.choices[0].message.content
+    const prompt = `${systemPrompt}\n\n${userPrompt}`
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const generatedContent = response.text()
+    
     console.log(`✅ Content generation successful`)
-    console.log(`📝 Generated content: ${generatedContent?.substring(0, 100)}...`)
+    console.log(`📝 Generated content: ${generatedContent.substring(0, 100)}...`)
     
     return {
       status: 'success',
-      content: generatedContent,
-      tokensUsed: completion.usage?.total_tokens
+      content: generatedContent
     }
     
   } catch (error) {
@@ -212,33 +201,6 @@ export async function testContentGeneration() {
   }
 }
 
-// 模拟学习内容数据
-const mockLearningContent = {
-  summary: {
-    keyPoints: [
-      'React Hooks是函数组件中使用状态和生命周期的方式',
-      'useState用于管理组件内部状态',
-      'useEffect用于处理副作用，如API调用和订阅',
-      'useContext用于在组件树中共享状态'
-    ],
-    learningTime: '45-60分钟',
-    difficulty: 'intermediate'
-  },
-  concepts: [
-    {
-      name: 'useState',
-      explanation: '状态Hook，用于在函数组件中添加状态管理功能'
-    },
-    {
-      name: 'useEffect',
-      explanation: '副作用Hook，用于处理副作用操作，如数据获取、订阅等'
-    },
-    {
-      name: 'useContext',
-      explanation: '上下文Hook，用于消费React Context，实现组件间状态共享'
-    }
-  ]
-}
 
 /**
  * 运行所有API测试
@@ -249,7 +211,7 @@ export async function runAllAPITests() {
   const results = {
     database: null as any,
     apis: null as any,
-    openai: null as any,
+    gemini: null as any,
     groq: null as any,
     youtube: null as any,
     contentGeneration: null as any,
@@ -268,10 +230,10 @@ export async function runAllAPITests() {
   results.apis = await testAPIConnections()
   console.log()
   
-  // 3. 测试OpenAI
-  console.log('3️⃣ OpenAI API Test')
+  // 3. 测试Gemini
+  console.log('3️⃣ Gemini API Test')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  results.openai = await testOpenAIAPI()
+  results.gemini = await testGeminiAPI()
   console.log()
   
   // 4. 测试Groq
@@ -296,10 +258,10 @@ export async function runAllAPITests() {
   console.log('📊 Test Results Summary')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log(`🗄️  Database: ${results.database ? '✅ Connected' : '❌ Failed'}`)
-  console.log(`🤖 OpenAI: ${results.openai?.status === 'success' ? '✅ Working' : '❌ Failed'}`)
+  console.log(`🤖 Gemini: ${results.gemini?.status === 'success' ? '✅ Working' : '❌ Failed'}`)
   console.log(`⚡ Groq: ${results.groq?.status === 'success' ? '✅ Working' : '❌ Failed'}`)
   console.log(`📺 YouTube: ${results.youtube?.status === 'success' ? '✅ Working' : '❌ Failed'}`)
-  console.log(`📝 Content Gen: ${results.contentGeneration?.status === 'success' ? '✅ Working' : results.contentGeneration?.status === 'mock' ? '⚠️ Mock' : '❌ Failed'}`)
+  console.log(`📝 Content Gen: ${results.contentGeneration?.status === 'success' ? '✅ Working' : '❌ Failed'}`)
   
   return results
 }

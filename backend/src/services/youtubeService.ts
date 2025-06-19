@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { VideoInfo } from '../types'
+import { spawn } from 'child_process'
 
 /**
  * YouTube服务类 - 处理视频信息提取
@@ -88,81 +89,178 @@ export class YouTubeService {
   }
   
   /**
-   * 模拟完整视频信息提取（用于开发测试）
-   * 在生产环境中，这里会使用yt-dlp或其他工具
+   * 使用yt-dlp获取真实视频信息
    */
   static async getDetailedVideoInfo(url: string): Promise<VideoInfo> {
+    try {
+      console.log(`🔍 Extracting real video info for: ${url}`)
+      
+      // 首先检查yt-dlp是否可用
+      const hasYtDlp = await this.checkYtDlpAvailable()
+      console.log(`🔧 yt-dlp availability check: ${hasYtDlp}`)
+      
+      if (!hasYtDlp) {
+        console.warn('⚠️ yt-dlp not available, using fallback method')
+        return this.getFallbackVideoInfo(url)
+      }
+      
+      // 使用yt-dlp获取真实信息
+      console.log(`🚀 Using yt-dlp to extract real video info`)
+      const realInfo = await this.extractRealVideoInfo(url)
+      console.log(`✅ Real video info extracted: ${realInfo.duration}`)
+      return realInfo
+      
+    } catch (error) {
+      console.error('❌ Failed to get real video info:', error)
+      console.warn('🔄 Falling back to mock data due to error')
+      // 如果获取真实信息失败，使用fallback
+      return this.getFallbackVideoInfo(url)
+    }
+  }
+  
+  /**
+   * 检查yt-dlp是否可用
+   */
+  private static async checkYtDlpAvailable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const process = spawn('yt-dlp', ['--version'])
+      
+      process.on('close', (code) => {
+        resolve(code === 0)
+      })
+      
+      process.on('error', () => {
+        resolve(false)
+      })
+      
+      // 超时处理
+      setTimeout(() => {
+        process.kill()
+        resolve(false)
+      }, 5000)
+    })
+  }
+  
+  /**
+   * 使用yt-dlp提取真实视频信息
+   */
+  private static async extractRealVideoInfo(url: string): Promise<VideoInfo> {
+    return new Promise((resolve, reject) => {
+      const args = [
+        '--print',
+        '%(title)s|||%(uploader)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s',
+        url
+      ]
+      
+      const process = spawn('yt-dlp', args)
+      let output = ''
+      let errorOutput = ''
+      
+      process.stdout.on('data', (data) => {
+        output += data.toString()
+      })
+      
+      process.stderr.on('data', (data) => {
+        errorOutput += data.toString()
+      })
+      
+      process.on('close', (code) => {
+        if (code === 0 && output.trim()) {
+          try {
+            const parts = output.trim().split('|||')
+            const [title, uploader, duration, viewCount, thumbnail] = parts
+            
+            // 格式化时长
+            const durationInt = parseInt(duration) || 0
+            const formattedDuration = this.formatDuration(durationInt)
+            
+            // 格式化观看次数
+            const viewCountInt = parseInt(viewCount) || 0
+            const formattedViews = this.formatViewCount(viewCountInt)
+            
+            resolve({
+              title: title || 'Unknown Title',
+              channel: uploader || 'Unknown Channel',
+              duration: formattedDuration,
+              views: formattedViews,
+              url: url,
+              thumbnail: thumbnail || undefined,
+              description: undefined // 暂时不获取描述以简化解析
+            })
+          } catch (parseError) {
+            console.error('❌ Failed to parse yt-dlp output:', parseError)
+            reject(new Error('Failed to parse video information'))
+          }
+        } else {
+          reject(new Error(`yt-dlp failed with code ${code}: ${errorOutput}`))
+        }
+      })
+      
+      process.on('error', (error) => {
+        reject(new Error(`Failed to start yt-dlp: ${error.message}`))
+      })
+      
+      // 超时处理
+      setTimeout(() => {
+        process.kill()
+        reject(new Error('yt-dlp extraction timeout'))
+      }, 30000) // 30秒超时
+    })
+  }
+  
+  /**
+   * 格式化时长（秒转换为MM:SS或HH:MM:SS）
+   */
+  private static formatDuration(seconds: number): string {
+    if (seconds <= 0) return '0:00'
+    
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const remainingSeconds = seconds % 60
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+    } else {
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+    }
+  }
+  
+  /**
+   * 格式化观看次数
+   */
+  private static formatViewCount(views: number): string {
+    if (views >= 1000000) {
+      return `${(views / 1000000).toFixed(1)}M`
+    } else if (views >= 1000) {
+      return `${(views / 1000).toFixed(1)}K`
+    } else {
+      return views.toString()
+    }
+  }
+  
+  /**
+   * 获取fallback视频信息（当yt-dlp不可用时）
+   */
+  private static async getFallbackVideoInfo(url: string): Promise<VideoInfo> {
+    // 只使用基本信息，不生成模拟数据
     const basicInfo = await this.getBasicVideoInfo(url)
-    const videoId = this.extractVideoId(url)
     
-    // 生成模拟的详细信息
-    const mockDetails = this.generateMockVideoDetails(videoId || 'unknown', basicInfo.title || 'Unknown Title')
+    if (!basicInfo.title) {
+      throw new Error('Unable to extract video information - yt-dlp required')
+    }
     
     return {
-      title: basicInfo.title || mockDetails.title,
-      channel: basicInfo.channel || mockDetails.channel,
-      duration: mockDetails.duration,
-      views: mockDetails.views,
+      title: basicInfo.title,
+      channel: basicInfo.channel || 'Unknown Channel',
+      duration: '0:00', // 无法确定时长
+      views: '0',
       url: url,
-      thumbnail: basicInfo.thumbnail || mockDetails.thumbnail,
-      description: mockDetails.description
+      thumbnail: basicInfo.thumbnail,
+      description: undefined
     }
   }
   
-  /**
-   * 生成模拟的视频详细信息
-   */
-  private static generateMockVideoDetails(videoId: string, title: string) {
-    // 根据标题内容生成相应的模拟数据
-    const isReactVideo = title.toLowerCase().includes('react')
-    const isPythonVideo = title.toLowerCase().includes('python')
-    const isJavaScriptVideo = title.toLowerCase().includes('javascript') || title.toLowerCase().includes('js')
-    
-    let category = 'Programming'
-    let duration = '25:30'
-    let views = '245K'
-    let description = 'A comprehensive tutorial covering the fundamentals and advanced concepts.'
-    
-    if (isReactVideo) {
-      category = 'Frontend Development'
-      duration = '45:20'
-      views = '1.2M'
-      description = 'Complete React tutorial covering hooks, components, state management, and best practices. Perfect for beginners and intermediate developers.'
-    } else if (isPythonVideo) {
-      category = 'Data Science'
-      duration = '38:15'
-      views = '856K'
-      description = 'Learn Python programming with practical examples. Covers data analysis, pandas, numpy, and visualization techniques.'
-    } else if (isJavaScriptVideo) {
-      category = 'Web Development'
-      duration = '52:40'
-      views = '634K'
-      description = 'Master JavaScript fundamentals including ES6+, async/await, DOM manipulation, and modern development practices.'
-    }
-    
-    return {
-      title: title,
-      channel: this.getChannelNameByCategory(category),
-      duration: duration,
-      views: views,
-      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-      description: description
-    }
-  }
-  
-  /**
-   * 根据分类获取模拟频道名称
-   */
-  private static getChannelNameByCategory(category: string): string {
-    const channels = {
-      'Frontend Development': 'React Academy',
-      'Data Science': 'Data Science Pro',
-      'Web Development': 'JavaScript Masters',
-      'Programming': 'Code With Examples'
-    }
-    
-    return channels[category as keyof typeof channels] || 'Tech Tutorial Channel'
-  }
+
   
   /**
    * 估算视频时长（秒）
@@ -184,13 +282,32 @@ export class YouTubeService {
   /**
    * 验证视频是否适合处理
    */
-  static validateVideoForProcessing(videoInfo: VideoInfo): { valid: boolean; reason?: string } {
-    // 检查时长限制（假设最大1小时）
+  static validateVideoForProcessing(videoInfo: VideoInfo): { 
+    valid: boolean; 
+    reason?: string;
+    suggestion?: string;
+    limits?: {
+      maxDuration: string;
+      currentDuration: string;
+      exceeded: boolean;
+    }
+  } {
+    // 检查时长限制（最大2小时）
     const durationSeconds = this.parseDurationToSeconds(videoInfo.duration)
-    if (durationSeconds > 3600) {
+    const maxDuration = 7200 // 2小时
+    const currentDurationStr = this.formatDuration(durationSeconds)
+    const maxDurationStr = this.formatDuration(maxDuration)
+    
+    if (durationSeconds > maxDuration) {
       return {
         valid: false,
-        reason: 'Video duration exceeds 1 hour limit'
+        reason: `视频时长过长 (${currentDurationStr})，超出免费版限制 (${maxDurationStr})`,
+        suggestion: '💡 建议：1) 选择较短视频(≤2小时) 2) 分段处理长内容 3) 升级付费版处理大型视频',
+        limits: {
+          maxDuration: maxDurationStr,
+          currentDuration: currentDurationStr,
+          exceeded: true
+        }
       }
     }
     
@@ -198,7 +315,8 @@ export class YouTubeService {
     if (!videoInfo.title || videoInfo.title.length < 10) {
       return {
         valid: false,
-        reason: 'Video title is too short or missing'
+        reason: '视频标题信息不完整',
+        suggestion: '请检查视频链接是否有效且可访问'
       }
     }
     
@@ -206,11 +324,19 @@ export class YouTubeService {
     if (!videoInfo.channel) {
       return {
         valid: false,
-        reason: 'Channel information is missing'
+        reason: '无法获取频道信息',
+        suggestion: '请确认视频为公开可访问状态'
       }
     }
     
-    return { valid: true }
+    return { 
+      valid: true,
+      limits: {
+        maxDuration: maxDurationStr,
+        currentDuration: currentDurationStr,
+        exceeded: false
+      }
+    }
   }
   
   /**

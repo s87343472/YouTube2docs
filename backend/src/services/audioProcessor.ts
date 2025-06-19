@@ -13,8 +13,8 @@ const execAsync = promisify(exec)
  */
 export class AudioProcessor {
   private static readonly TEMP_DIR = path.join(process.cwd(), 'temp')
-  private static readonly MAX_DURATION = 3600 // 1小时
-  private static readonly MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+  private static readonly MAX_DURATION = 7200 // 2小时
+  private static readonly MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB (Groq API limit)
 
   /**
    * 确保临时目录存在
@@ -59,8 +59,7 @@ export class AudioProcessor {
     const dependencies = await this.checkDependencies()
     
     if (!dependencies.ytdlp) {
-      // 返回模拟的音频提取结果
-      return this.generateMockAudioResult(videoId)
+      throw new Error('yt-dlp is required for audio extraction but not available')
     }
 
     const outputPath = path.join(this.TEMP_DIR, `${videoId}.%(ext)s`)
@@ -100,8 +99,7 @@ export class AudioProcessor {
 
     } catch (error) {
       console.error('❌ Audio extraction failed:', error)
-      // 发生错误时返回模拟数据
-      return this.generateMockAudioResult(videoId)
+      throw error
     }
   }
 
@@ -296,19 +294,7 @@ export class AudioProcessor {
     }
   }
 
-  /**
-   * 生成模拟音频提取结果
-   */
-  private static generateMockAudioResult(videoId: string): AudioExtractionResult {
-    const mockPath = path.join(this.TEMP_DIR, `${videoId}_mock.mp3`)
-    
-    return {
-      audioPath: mockPath,
-      duration: 1530, // 25分30秒
-      format: 'mp3',
-      size: 15 * 1024 * 1024 // 15MB
-    }
-  }
+
 
   /**
    * 验证音频文件质量

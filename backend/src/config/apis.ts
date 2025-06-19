@@ -1,19 +1,9 @@
-import OpenAI from 'openai'
 import Groq from 'groq-sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// OpenAI configuration - 延迟初始化以避免启动时错误
-export let openai: OpenAI | null = null
+// API clients - 延迟初始化以避免启动时错误  
 export let groq: Groq | null = null
-
-// 初始化OpenAI客户端
-export function initOpenAI(): OpenAI {
-  if (!openai && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your-openai-api-key-here') {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
-  }
-  return openai!
-}
+export let gemini: GoogleGenerativeAI | null = null
 
 // 初始化Groq客户端
 export function initGroq(): Groq {
@@ -25,25 +15,33 @@ export function initGroq(): Groq {
   return groq!
 }
 
-// 检查API密钥是否可用
-export function hasOpenAIKey(): boolean {
-  return !!(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your-openai-api-key-here')
+// 初始化Gemini客户端
+export function initGemini(): GoogleGenerativeAI {
+  if (!gemini && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your-gemini-api-key-here') {
+    gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  }
+  return gemini!
 }
 
+// 检查API密钥是否可用
 export function hasGroqKey(): boolean {
   return !!(process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your-groq-api-key-here')
+}
+
+export function hasGeminiKey(): boolean {
+  return !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your-gemini-api-key-here')
 }
 
 // API configuration constants
 export const API_CONFIG = {
   GROQ: {
     MODEL: 'whisper-large-v3-turbo',
-    MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+    MAX_FILE_SIZE: 25 * 1024 * 1024, // 25MB (actual Groq API limit)
     SUPPORTED_FORMATS: ['mp3', 'wav', 'm4a', 'webm', 'mp4']
   },
-  OPENAI: {
-    MODEL: 'gpt-4o',
-    MAX_TOKENS: 4000,
+  GEMINI: {
+    MODEL: 'gemini-2.5-flash',
+    MAX_TOKENS: 32768, // Increased for detailed content generation
     TEMPERATURE: 0.3
   }
 }
@@ -51,22 +49,8 @@ export const API_CONFIG = {
 // Test API connections
 export async function testAPIConnections() {
   const results = {
-    openai: false,
-    groq: false
-  }
-
-  try {
-    // Test OpenAI
-    if (hasOpenAIKey()) {
-      const client = initOpenAI()
-      await client.models.list()
-      results.openai = true
-      console.log('✅ OpenAI API connected successfully')
-    } else {
-      console.log('⚠️  OpenAI API key not configured')
-    }
-  } catch (error) {
-    console.error('❌ OpenAI API connection failed:', (error as Error).message)
+    groq: false,
+    gemini: false
   }
 
   try {
@@ -81,6 +65,21 @@ export async function testAPIConnections() {
     }
   } catch (error) {
     console.error('❌ Groq API connection failed:', (error as Error).message)
+  }
+
+  try {
+    // Test Gemini
+    if (hasGeminiKey()) {
+      const client = initGemini()
+      const model = client.getGenerativeModel({ model: API_CONFIG.GEMINI.MODEL })
+      await model.generateContent('test')
+      results.gemini = true
+      console.log('✅ Gemini API connected successfully')
+    } else {
+      console.log('⚠️  Gemini API key not configured')
+    }
+  } catch (error) {
+    console.error('❌ Gemini API connection failed:', (error as Error).message)
   }
 
   return results

@@ -30,6 +30,7 @@ export interface VideoProcess {
 // Learning material structure
 export interface LearningMaterial {
   videoInfo: VideoInfo
+  transcription?: TranscriptionResult
   summary: Summary
   structuredContent: StructuredContent
   knowledgeGraph: KnowledgeGraph
@@ -74,6 +75,8 @@ export interface Chapter {
   keyPoints: string[]
   concepts: string[]
   practicalApplications?: string[]
+  detailedExplanation?: string
+  examples?: string[]
 }
 
 export interface KnowledgeGraph {
@@ -116,7 +119,7 @@ export interface KnowledgeEdge {
 
 export interface StudyCard {
   id: string
-  type: 'concept' | 'definition' | 'example' | 'question' | 'summary'
+  type: 'concept' | 'definition' | 'example' | 'question' | 'summary' | 'application'
   title: string
   content: string
   relatedConcepts: string[]

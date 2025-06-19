@@ -1,0 +1,33 @@
+{
+  "database": true,
+  "apis": {
+    "groq": true,
+    "gemini": true
+  },
+  "gemini": {
+    "status": "success",
+    "model": "gemini-2.5-flash",
+    "testResponse": ""
+  },
+  "groq": {
+    "status": "success",
+    "models": 3,
+    "whisperModel": "distil-whisper-large-v3-en"
+  },
+  "youtube": {
+    "status": "success",
+    "videoInfo": {
+      "title": "【漫士科普】90分钟深度！一口气看明白人工智能和神经网络#人工智能 #神经网络",
+      "channel": "漫士沉思录",
+      "duration": "1:28:57",
+      "views": "432.8K",
+      "url": "https://www.youtube.com/watch?v=LF9sd-2jCoY",
+      "thumbnail": "https://i.ytimg.com/vi/LF9sd-2jCoY/maxresdefault.jpg"
+    }
+  },
+  "contentGeneration": {
+    "status": "success",
+    "content": ""
+  },
+  "timestamp": "2025-06-19T07:20:30.005Z"
+}
