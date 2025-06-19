@@ -128,7 +128,13 @@ export class VideoProcessor {
       // 验证视频是否适合处理
       const validation = YouTubeService.validateVideoForProcessing(videoInfo)
       if (!validation.valid) {
-        throw new Error(`Video validation failed: ${validation.reason}`)
+        const errorMessage = [
+          `❌ ${validation.reason}`,
+          validation.suggestion ? `${validation.suggestion}` : '',
+          validation.limits?.exceeded ? `⏱️ 当前: ${validation.limits.currentDuration} | 限制: ${validation.limits.maxDuration}` : ''
+        ].filter(Boolean).join('\n')
+        
+        throw new Error(errorMessage)
       }
 
       // 步骤2: 提取音频

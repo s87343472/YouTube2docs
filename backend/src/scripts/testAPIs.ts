@@ -32,8 +32,8 @@ async function main() {
     // 检查是否所有关键测试都通过
     const criticalTests = [
       results.database,
-      results.openai?.status === 'success' || results.openai?.status === 'mock',
-      results.groq?.status === 'success' || results.groq?.status === 'mock',
+      results.gemini?.status === 'success',
+      results.groq?.status === 'success',
       results.youtube?.status === 'success'
     ]
     

@@ -1,4 +1,4 @@
-import { openai, hasOpenAIKey, initOpenAI } from '../config/apis'
+import { hasGeminiKey, initGemini, API_CONFIG } from '../config/apis'
 import { VideoInfo, TranscriptionResult, LearningMaterial, KnowledgeGraph, KnowledgeNode, KnowledgeEdge, StudyCard } from '../types'
 
 /**
@@ -17,13 +17,11 @@ export class KnowledgeGraphService {
     console.log('🧠 Generating knowledge graph for:', videoInfo.title)
 
     try {
-      // 如果没有OpenAI密钥，返回模拟数据
-      if (!hasOpenAIKey()) {
-        console.warn('⚠️ OpenAI API key not available, generating mock knowledge graph')
+      // 如果没有Gemini密钥，返回模拟数据
+      if (!hasGeminiKey()) {
+        console.warn('⚠️ Gemini API key not available, generating mock knowledge graph')
         return this.generateMockKnowledgeGraph(videoInfo, learningMaterial)
       }
-
-      await initOpenAI()
 
       // 第一步：提取知识概念
       const concepts = await this.extractConcepts(videoInfo, transcription, learningMaterial)
@@ -61,40 +59,37 @@ export class KnowledgeGraphService {
     knowledgeGraph: KnowledgeGraph,
     learningMaterial: LearningMaterial
   ): Promise<StudyCard[]> {
-    console.log('📚 Generating study cards from knowledge graph')
+    console.log('📚 Generating enhanced study cards for effective learning')
 
     try {
-      if (!hasOpenAIKey()) {
-        return this.generateMockStudyCards(knowledgeGraph, learningMaterial)
+      if (!hasGeminiKey()) {
+        return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial)
       }
-
-      await initOpenAI()
 
       const cards: StudyCard[] = []
 
-      // 为核心概念生成概念卡片
-      for (const nodeId of knowledgeGraph.metadata?.coreconcepts || []) {
-        const node = knowledgeGraph.nodes.find(n => n.id === nodeId)
-        if (node) {
-          const conceptCard = await this.generateConceptCard(node)
-          cards.push(conceptCard)
-        }
-      }
+      // 1. 生成知识点精华卡片（基于章节重点）
+      const essentialCards = await this.generateEssentialCards(learningMaterial)
+      cards.push(...essentialCards)
 
-      // 生成总结卡片
-      const summaryCards = await this.generateSummaryCards(learningMaterial)
-      cards.push(...summaryCards)
+      // 2. 生成理解检验卡片
+      const comprehensionCards = await this.generateComprehensionCards(learningMaterial)
+      cards.push(...comprehensionCards)
 
-      // 生成问答卡片
-      const questionCards = await this.generateQuestionCards(knowledgeGraph, learningMaterial)
-      cards.push(...questionCards)
+      // 3. 生成应用实践卡片
+      const practiceCards = await this.generatePracticeCards(learningMaterial)
+      cards.push(...practiceCards)
 
-      console.log(`✅ Generated ${cards.length} study cards`)
-      return cards
+      // 4. 生成记忆巩固卡片
+      const memoryCards = await this.generateMemoryCards(learningMaterial)
+      cards.push(...memoryCards)
+
+      console.log(`✅ Generated ${cards.length} enhanced study cards`)
+      return cards.slice(0, 12) // 限制总数，保持质量
 
     } catch (error) {
       console.error('❌ Failed to generate study cards:', error)
-      return this.generateMockStudyCards(knowledgeGraph, learningMaterial)
+      return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial)
     }
   }
 
@@ -130,21 +125,22 @@ ${learningMaterial.summary.keyPoints.join('\n')}
 请提取核心概念：`
 
     try {
-      const openaiClient = await initOpenAI()
-      if (!openaiClient) throw new Error('OpenAI client not available')
-      
-      const response = await openaiClient.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 1000
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: API_CONFIG.GEMINI.TEMPERATURE,
+          maxOutputTokens: 1000,
+          responseMimeType: "application/json"
+        }
       })
+      
+      const prompt = `${systemPrompt}\n\n${userPrompt}`
+      const result = await model.generateContent(prompt)
+      const response = await result.response
+      const content = response.text()
 
-      const content = response.choices[0]?.message?.content
-      if (!content) throw new Error('Empty response from OpenAI')
+      if (!content) throw new Error('Empty response from Gemini')
 
       return JSON.parse(content)
     } catch (error) {
@@ -485,15 +481,24 @@ ${learningMaterial.summary.keyPoints.join('\n')}
    * 生成概念卡片
    */
   private static async generateConceptCard(node: KnowledgeNode): Promise<StudyCard> {
+    // 确保标题不为空
+    const title = node.label && node.label.trim() ? node.label : `概念学习 - ${node.id}`
+    
+    // 确保内容不为空且合理长度
+    let content = node.description
+    if (!content || content.length > 500) {
+      content = `这是关于"${title}"的重要概念。请参考视频${node.timeRange}部分了解详细内容。`
+    }
+    
     return {
       id: `card_${node.id}`,
       type: 'concept',
-      title: node.label,
-      content: node.description,
+      title: title,
+      content: content,
       relatedConcepts: [node.id],
       difficulty: node.complexity <= 3 ? 'easy' : node.complexity <= 7 ? 'medium' : 'hard',
-      estimatedTime: Math.floor(node.complexity * 1.5),
-      timeReference: node.timeRange
+      estimatedTime: Math.floor(node.complexity * 1.5) || 2,
+      timeReference: node.timeRange || '全程'
     }
   }
 
@@ -596,21 +601,229 @@ ${learningMaterial.summary.keyPoints.join('\n')}
   }
 
   /**
-   * 生成模拟学习卡片
+   * 生成知识点精华卡片（详细学习笔记格式）
    */
-  private static generateMockStudyCards(
+  private static async generateEssentialCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const cards: StudyCard[] = []
+    
+    // 基于章节生成详细的学习笔记卡片
+    learningMaterial.structuredContent.chapters.forEach((chapter, index) => {
+      if (chapter.keyPoints && chapter.keyPoints.length > 0) {
+        // 构建详细的学习笔记内容
+        const detailedContent = this.generateDetailedNoteContent(chapter, learningMaterial)
+        
+        cards.push({
+          id: `note_${index + 1}`,
+          type: 'summary',
+          title: `📚 ${chapter.title}`,
+          content: detailedContent,
+          relatedConcepts: chapter.concepts || [],
+          difficulty: 'medium',
+          estimatedTime: 8,
+          timeReference: chapter.timeRange
+        })
+      }
+    })
+    
+    return cards.slice(0, 4) // 增加数量以包含更多详细内容
+  }
+
+  /**
+   * 生成详细的图文学习笔记内容
+   */
+  private static generateDetailedNoteContent(chapter: any, learningMaterial: LearningMaterial): string {
+    const content = []
+    
+    // 章节标题和时间
+    content.push(`📖 ${chapter.title}`)
+    content.push(`⏰ 视频时间: ${chapter.timeRange}`)
+    content.push('')
+    
+    // 详细解释（如果有的话）
+    if (chapter.detailedExplanation) {
+      content.push('📚 详细内容:')
+      content.push(chapter.detailedExplanation)
+      content.push('')
+    }
+    
+    // 核心要点详解
+    content.push('🎯 核心要点:')
+    chapter.keyPoints.forEach((point: string, idx: number) => {
+      content.push(`${idx + 1}. ${point}`)
+    })
+    content.push('')
+    
+    // 重要概念详细解释
+    if (chapter.concepts && chapter.concepts.length > 0) {
+      content.push('🔑 关键概念详解:')
+      chapter.concepts.forEach((concept: string) => {
+        const conceptDetail = learningMaterial.summary.concepts?.find(c => 
+          c.name.toLowerCase().includes(concept.toLowerCase()) || 
+          concept.toLowerCase().includes(c.name.toLowerCase())
+        )
+        if (conceptDetail) {
+          content.push(`📌 ${conceptDetail.name}`)
+          content.push(`   定义: ${conceptDetail.explanation}`)
+          content.push('')
+        } else {
+          content.push(`📌 ${concept}`)
+          content.push(`   这是本章节中的重要概念，需要深入理解`)
+          content.push('')
+        }
+      })
+    }
+    
+    // 具体例子（如果有的话）
+    if (chapter.examples && chapter.examples.length > 0) {
+      content.push('💡 具体例子:')
+      chapter.examples.forEach((example: string, idx: number) => {
+        content.push(`${idx + 1}. ${example}`)
+      })
+      content.push('')
+    }
+    
+    // 实际应用
+    if (chapter.practicalApplications && chapter.practicalApplications.length > 0) {
+      content.push('🛠️ 实际应用:')
+      chapter.practicalApplications.forEach((app: string, idx: number) => {
+        content.push(`${idx + 1}. ${app}`)
+      })
+      content.push('')
+    }
+    
+    // 学习检查点
+    content.push('✅ 学习检查点:')
+    content.push('完成本章节学习后，你应该能够:')
+    content.push(`• 清楚解释 "${chapter.keyPoints[0]}" 的含义和重要性`)
+    content.push('• 理解本章节涉及的所有关键概念')
+    content.push('• 说出这些概念的实际应用场景')
+    content.push('• 解释不同概念之间的关联关系')
+    
+    return content.join('\n')
+  }
+
+  /**
+   * 生成理解检验卡片
+   */
+  private static async generateComprehensionCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const cards: StudyCard[] = []
+    
+    learningMaterial.summary.keyPoints.slice(0, 3).forEach((keyPoint, index) => {
+      cards.push({
+        id: `comprehension_${index + 1}`,
+        type: 'question',
+        title: `🤔 理解检验 ${index + 1}`,
+        content: `❓ 问题：请用自己的话解释"${keyPoint}"的含义和重要性。\n\n💭 思考要点：\n• 这个概念的核心是什么？\n• 它为什么重要？\n• 它与其他概念有什么关联？`,
+        relatedConcepts: [],
+        difficulty: 'medium',
+        estimatedTime: 8,
+        timeReference: '全程'
+      })
+    })
+    
+    return cards
+  }
+
+  /**
+   * 生成应用实践卡片
+   */
+  private static async generatePracticeCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const cards: StudyCard[] = []
+    
+    const practiceTopics = learningMaterial.summary.keyPoints.filter(point => 
+      point.includes('应用') || point.includes('实践') || point.includes('方法') || point.includes('技术')
+    ).slice(0, 2)
+    
+    practiceTopics.forEach((topic, index) => {
+      cards.push({
+        id: `practice_${index + 1}`,
+        type: 'application',
+        title: `🛠️ 实践应用 ${index + 1}`,
+        content: `🎯 实践任务：基于"${topic}"的内容，请思考：\n\n📝 任务：\n• 如何在实际中应用这个知识？\n• 可以解决什么具体问题？\n• 需要注意哪些关键点？\n\n💡 提示：结合视频内容思考具体应用场景。`,
+        relatedConcepts: [],
+        difficulty: 'hard',
+        estimatedTime: 15,
+        timeReference: '全程'
+      })
+    })
+    
+    return cards
+  }
+
+  /**
+   * 生成记忆巩固卡片
+   */
+  private static async generateMemoryCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const cards: StudyCard[] = []
+    
+    // 基于重要概念生成记忆卡片
+    if (learningMaterial.summary.concepts && learningMaterial.summary.concepts.length > 0) {
+      learningMaterial.summary.concepts.slice(0, 2).forEach((concept, index) => {
+        cards.push({
+          id: `memory_${index + 1}`,
+          type: 'concept',
+          title: `🧠 重点记忆：${concept.name}`,
+          content: `📚 定义：${concept.explanation}\n\n🔑 记忆要点：\n• 关键词：${concept.name}\n• 核心特征：请自己总结\n• 应用场景：请思考具体例子\n\n💭 自测：能否不看材料解释这个概念？`,
+          relatedConcepts: [],
+          difficulty: 'easy',
+          estimatedTime: 5,
+          timeReference: '全程'
+        })
+      })
+    }
+    
+    return cards
+  }
+
+  /**
+   * 生成增强版模拟学习卡片
+   */
+  private static generateEnhancedMockStudyCards(
     knowledgeGraph: KnowledgeGraph,
     learningMaterial: LearningMaterial
   ): StudyCard[] {
-    return knowledgeGraph.nodes.slice(0, 5).map((node, index) => ({
-      id: `card_${index + 1}`,
-      type: 'concept' as const,
-      title: node.label,
-      content: node.description,
-      relatedConcepts: [node.id],
-      difficulty: node.complexity <= 3 ? 'easy' as const : node.complexity <= 7 ? 'medium' as const : 'hard' as const,
-      estimatedTime: Math.floor(node.complexity * 1.5),
-      timeReference: node.timeRange
-    }))
+    const cards: StudyCard[] = []
+    
+    // 1. 知识精华卡片
+    learningMaterial.summary.keyPoints.slice(0, 2).forEach((keyPoint, index) => {
+      cards.push({
+        id: `essential_${index + 1}`,
+        type: 'summary',
+        title: `💡 核心要点 ${index + 1}`,
+        content: `📋 重点内容：${keyPoint}\n\n🎯 学习目标：理解并掌握这个要点的核心含义`,
+        relatedConcepts: [],
+        difficulty: 'medium',
+        estimatedTime: 5,
+        timeReference: '全程'
+      })
+    })
+    
+    // 2. 理解检验卡片
+    learningMaterial.summary.keyPoints.slice(2, 4).forEach((keyPoint, index) => {
+      cards.push({
+        id: `check_${index + 1}`,
+        type: 'question',
+        title: `🤔 理解检验 ${index + 1}`,
+        content: `❓ 请解释：${keyPoint}\n\n💭 思考：\n• 这个概念的重要性在哪里？\n• 你能举出相关的例子吗？`,
+        relatedConcepts: [],
+        difficulty: 'medium',
+        estimatedTime: 8,
+        timeReference: '全程'
+      })
+    })
+    
+    // 3. 综合应用卡片
+    cards.push({
+      id: 'application_1',
+      type: 'application',
+      title: '🛠️ 知识应用',
+      content: `🎯 综合任务：\n基于视频中学到的知识，请思考如何将这些概念应用到实际场景中。\n\n📝 要求：\n• 选择一个具体应用场景\n• 说明应用的步骤和要点\n• 分析可能遇到的挑战`,
+      relatedConcepts: [],
+      difficulty: 'hard',
+      estimatedTime: 15,
+      timeReference: '全程'
+    })
+    
+    return cards
   }
 }

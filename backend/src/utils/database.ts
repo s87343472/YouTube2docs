@@ -144,7 +144,7 @@ export class DatabaseManager {
     } catch (error) {
       return {
         status: 'unhealthy',
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       }
     }
   }
@@ -154,7 +154,7 @@ export class DatabaseManager {
    */
   static async getStats() {
     try {
-      const stats = {}
+      const stats: any = {}
 
       // 用户统计
       const { rows: userStats } = await pool.query(`
@@ -193,7 +193,7 @@ export class DatabaseManager {
 
       return stats
     } catch (error) {
-      throw new Error(`Stats query failed: ${error.message}`)
+      throw new Error(`Stats query failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }
