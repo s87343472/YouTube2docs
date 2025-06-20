@@ -46,7 +46,7 @@ exports.API_CONFIG = {
     },
     GEMINI: {
         MODEL: 'gemini-2.5-flash',
-        MAX_TOKENS: 8192,
+        MAX_TOKENS: 32768, // Increased for detailed content generation
         TEMPERATURE: 0.3
     }
 };

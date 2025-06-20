@@ -84,8 +84,32 @@ export declare class KnowledgeGraphService {
      */
     private static generateMockKnowledgeGraph;
     /**
-     * 生成模拟学习卡片
+     * 生成知识点精华卡片（详细学习笔记格式）
      */
-    private static generateMockStudyCards;
+    private static generateEssentialCards;
+    /**
+     * 生成详细的图文学习笔记内容
+     */
+    private static generateDetailedNoteContent;
+    /**
+     * 生成理解检验卡片
+     */
+    private static generateComprehensionCards;
+    /**
+     * 生成应用实践卡片
+     */
+    private static generatePracticeCards;
+    /**
+     * 生成记忆巩固卡片
+     */
+    private static generateMemoryCards;
+    /**
+     * 生成概念解释（基于概念名称和章节内容）
+     */
+    private static generateConceptExplanation;
+    /**
+     * 生成增强版模拟学习卡片
+     */
+    private static generateEnhancedMockStudyCards;
 }
 //# sourceMappingURL=knowledgeGraphService.d.ts.map

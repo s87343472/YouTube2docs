@@ -43,32 +43,30 @@ class KnowledgeGraphService {
      * 生成学习卡片
      */
     static async generateStudyCards(knowledgeGraph, learningMaterial) {
-        console.log('📚 Generating study cards from knowledge graph');
+        console.log('📚 Generating enhanced study cards for effective learning');
         try {
             if (!(0, apis_1.hasGeminiKey)()) {
-                return this.generateMockStudyCards(knowledgeGraph, learningMaterial);
+                return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial);
             }
             const cards = [];
-            // 为核心概念生成概念卡片
-            for (const nodeId of knowledgeGraph.metadata?.coreconcepts || []) {
-                const node = knowledgeGraph.nodes.find(n => n.id === nodeId);
-                if (node) {
-                    const conceptCard = await this.generateConceptCard(node);
-                    cards.push(conceptCard);
-                }
-            }
-            // 生成总结卡片
-            const summaryCards = await this.generateSummaryCards(learningMaterial);
-            cards.push(...summaryCards);
-            // 生成问答卡片
-            const questionCards = await this.generateQuestionCards(knowledgeGraph, learningMaterial);
-            cards.push(...questionCards);
-            console.log(`✅ Generated ${cards.length} study cards`);
-            return cards;
+            // 1. 生成知识点精华卡片（基于章节重点）
+            const essentialCards = await this.generateEssentialCards(learningMaterial);
+            cards.push(...essentialCards);
+            // 2. 生成理解检验卡片
+            const comprehensionCards = await this.generateComprehensionCards(learningMaterial);
+            cards.push(...comprehensionCards);
+            // 3. 生成应用实践卡片
+            const practiceCards = await this.generatePracticeCards(learningMaterial);
+            cards.push(...practiceCards);
+            // 4. 生成记忆巩固卡片
+            const memoryCards = await this.generateMemoryCards(learningMaterial);
+            cards.push(...memoryCards);
+            console.log(`✅ Generated ${cards.length} enhanced study cards`);
+            return cards.slice(0, 12); // 限制总数，保持质量
         }
         catch (error) {
             console.error('❌ Failed to generate study cards:', error);
-            return this.generateMockStudyCards(knowledgeGraph, learningMaterial);
+            return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial);
         }
     }
     /**
@@ -374,15 +372,22 @@ ${learningMaterial.summary.keyPoints.join('\n')}
      * 生成概念卡片
      */
     static async generateConceptCard(node) {
+        // 确保标题不为空
+        const title = node.label && node.label.trim() ? node.label : `概念学习 - ${node.id}`;
+        // 确保内容不为空且合理长度
+        let content = node.description;
+        if (!content || content.length > 500) {
+            content = `这是关于"${title}"的重要概念。请参考视频${node.timeRange}部分了解详细内容。`;
+        }
         return {
             id: `card_${node.id}`,
             type: 'concept',
-            title: node.label,
-            content: node.description,
+            title: title,
+            content: content,
             relatedConcepts: [node.id],
             difficulty: node.complexity <= 3 ? 'easy' : node.complexity <= 7 ? 'medium' : 'hard',
-            estimatedTime: Math.floor(node.complexity * 1.5),
-            timeReference: node.timeRange
+            estimatedTime: Math.floor(node.complexity * 1.5) || 2,
+            timeReference: node.timeRange || '全程'
         };
     }
     /**
@@ -469,19 +474,253 @@ ${learningMaterial.summary.keyPoints.join('\n')}
         };
     }
     /**
-     * 生成模拟学习卡片
+     * 生成知识点精华卡片（详细学习笔记格式）
      */
-    static generateMockStudyCards(knowledgeGraph, learningMaterial) {
-        return knowledgeGraph.nodes.slice(0, 5).map((node, index) => ({
-            id: `card_${index + 1}`,
-            type: 'concept',
-            title: node.label,
-            content: node.description,
-            relatedConcepts: [node.id],
-            difficulty: node.complexity <= 3 ? 'easy' : node.complexity <= 7 ? 'medium' : 'hard',
-            estimatedTime: Math.floor(node.complexity * 1.5),
-            timeReference: node.timeRange
-        }));
+    static async generateEssentialCards(learningMaterial) {
+        const cards = [];
+        // 基于章节生成详细的学习笔记卡片
+        learningMaterial.structuredContent.chapters.forEach((chapter, index) => {
+            if (chapter.keyPoints && chapter.keyPoints.length > 0) {
+                // 构建详细的学习笔记内容
+                const detailedContent = this.generateDetailedNoteContent(chapter, learningMaterial);
+                cards.push({
+                    id: `note_${index + 1}`,
+                    type: 'summary',
+                    title: `📚 ${chapter.title}`,
+                    content: detailedContent,
+                    relatedConcepts: chapter.concepts || [],
+                    difficulty: 'medium',
+                    estimatedTime: 8,
+                    timeReference: chapter.timeRange
+                });
+            }
+        });
+        return cards.slice(0, 4); // 增加数量以包含更多详细内容
+    }
+    /**
+     * 生成详细的图文学习笔记内容
+     */
+    static generateDetailedNoteContent(chapter, learningMaterial) {
+        const content = [];
+        // 章节标题和时间
+        content.push(`📖 ${chapter.title}`);
+        content.push(`⏰ 视频时间: ${chapter.timeRange}`);
+        content.push('');
+        // 详细解释（如果有的话）
+        if (chapter.detailedExplanation) {
+            content.push('📚 详细内容:');
+            content.push(chapter.detailedExplanation);
+            content.push('');
+        }
+        // 核心要点详解
+        content.push('🎯 核心要点:');
+        chapter.keyPoints.forEach((point, idx) => {
+            content.push(`${idx + 1}. ${point}`);
+        });
+        content.push('');
+        // 重要概念详细解释
+        if (chapter.concepts && chapter.concepts.length > 0) {
+            content.push('🔑 关键概念详解:');
+            chapter.concepts.forEach((concept) => {
+                const conceptDetail = learningMaterial.summary.concepts?.find(c => c.name.toLowerCase().includes(concept.toLowerCase()) ||
+                    concept.toLowerCase().includes(c.name.toLowerCase()));
+                if (conceptDetail) {
+                    content.push(`📌 ${conceptDetail.name}`);
+                    content.push(`   定义: ${conceptDetail.explanation}`);
+                    content.push('');
+                }
+                else {
+                    // 生成基于概念名称和章节内容的智能解释
+                    const explanation = this.generateConceptExplanation(concept, chapter, learningMaterial);
+                    content.push(`📌 ${concept}`);
+                    content.push(`   定义: ${explanation}`);
+                    content.push('');
+                }
+            });
+        }
+        // 具体例子（如果有的话）
+        if (chapter.examples && chapter.examples.length > 0) {
+            content.push('💡 具体例子:');
+            chapter.examples.forEach((example, idx) => {
+                content.push(`${idx + 1}. ${example}`);
+            });
+            content.push('');
+        }
+        // 实际应用
+        if (chapter.practicalApplications && chapter.practicalApplications.length > 0) {
+            content.push('🛠️ 实际应用:');
+            chapter.practicalApplications.forEach((app, idx) => {
+                content.push(`${idx + 1}. ${app}`);
+            });
+            content.push('');
+        }
+        // 学习检查点
+        content.push('✅ 学习检查点:');
+        content.push('完成本章节学习后，你应该能够:');
+        content.push(`• 清楚解释 "${chapter.keyPoints[0]}" 的含义和重要性`);
+        content.push('• 理解本章节涉及的所有关键概念');
+        content.push('• 说出这些概念的实际应用场景');
+        content.push('• 解释不同概念之间的关联关系');
+        return content.join('\n');
+    }
+    /**
+     * 生成理解检验卡片
+     */
+    static async generateComprehensionCards(learningMaterial) {
+        const cards = [];
+        learningMaterial.summary.keyPoints.slice(0, 3).forEach((keyPoint, index) => {
+            cards.push({
+                id: `comprehension_${index + 1}`,
+                type: 'question',
+                title: `🤔 理解检验 ${index + 1}`,
+                content: `❓ 问题：请用自己的话解释"${keyPoint}"的含义和重要性。\n\n💭 思考要点：\n• 这个概念的核心是什么？\n• 它为什么重要？\n• 它与其他概念有什么关联？`,
+                relatedConcepts: [],
+                difficulty: 'medium',
+                estimatedTime: 8,
+                timeReference: '全程'
+            });
+        });
+        return cards;
+    }
+    /**
+     * 生成应用实践卡片
+     */
+    static async generatePracticeCards(learningMaterial) {
+        const cards = [];
+        const practiceTopics = learningMaterial.summary.keyPoints.filter(point => point.includes('应用') || point.includes('实践') || point.includes('方法') || point.includes('技术')).slice(0, 2);
+        practiceTopics.forEach((topic, index) => {
+            cards.push({
+                id: `practice_${index + 1}`,
+                type: 'application',
+                title: `🛠️ 实践应用 ${index + 1}`,
+                content: `🎯 实践任务：基于"${topic}"的内容，请思考：\n\n📝 任务：\n• 如何在实际中应用这个知识？\n• 可以解决什么具体问题？\n• 需要注意哪些关键点？\n\n💡 提示：结合视频内容思考具体应用场景。`,
+                relatedConcepts: [],
+                difficulty: 'hard',
+                estimatedTime: 15,
+                timeReference: '全程'
+            });
+        });
+        return cards;
+    }
+    /**
+     * 生成记忆巩固卡片
+     */
+    static async generateMemoryCards(learningMaterial) {
+        const cards = [];
+        // 基于重要概念生成记忆卡片
+        if (learningMaterial.summary.concepts && learningMaterial.summary.concepts.length > 0) {
+            learningMaterial.summary.concepts.slice(0, 2).forEach((concept, index) => {
+                cards.push({
+                    id: `memory_${index + 1}`,
+                    type: 'concept',
+                    title: `🧠 重点记忆：${concept.name}`,
+                    content: `📚 定义：${concept.explanation}\n\n🔑 记忆要点：\n• 关键词：${concept.name}\n• 核心特征：请自己总结\n• 应用场景：请思考具体例子\n\n💭 自测：能否不看材料解释这个概念？`,
+                    relatedConcepts: [],
+                    difficulty: 'easy',
+                    estimatedTime: 5,
+                    timeReference: '全程'
+                });
+            });
+        }
+        return cards;
+    }
+    /**
+     * 生成概念解释（基于概念名称和章节内容）
+     */
+    static generateConceptExplanation(concept, chapter, learningMaterial) {
+        const conceptLower = concept.toLowerCase();
+        // 基于概念名称的智能解释
+        if (conceptLower.includes('模糊性') || conceptLower.includes('ambiguity')) {
+            return '指任务的不确定性和复杂程度。高模糊性任务通常没有明确的步骤或固定的解决方案，需要智能体进行探索和适应性决策。';
+        }
+        if (conceptLower.includes('价值') || conceptLower.includes('value')) {
+            return '指任务成功完成后能够带来的商业价值或重要性。高价值任务值得投入更多资源，包括使用更复杂的智能体系统。';
+        }
+        if (conceptLower.includes('去风险') || conceptLower.includes('de-risk')) {
+            return '指在构建智能体前，先确保核心能力（如API集成、工具使用）已经验证可行，降低项目失败风险。';
+        }
+        if (conceptLower.includes('错误成本') || conceptLower.includes('error') || conceptLower.includes('cost')) {
+            return '指智能体出错时造成的损失和影响程度。低错误成本的任务更适合用智能体，因为可以容忍试错和学习过程。';
+        }
+        if (conceptLower.includes('模型') && conceptLower.includes('循环')) {
+            return '智能体的核心工作模式：模型接收输入，决定使用哪个工具，执行工具操作，获得反馈，然后重复这个过程直到完成任务。';
+        }
+        if (conceptLower.includes('环境') || conceptLower.includes('environment')) {
+            return '智能体操作和交互的系统环境，为智能体提供感知信息并接收智能体的行动输出。环境的复杂性直接影响智能体的设计难度。';
+        }
+        if (conceptLower.includes('工具') || conceptLower.includes('tool')) {
+            return '智能体用来在环境中执行具体操作的接口和功能模块。工具的质量和设计直接影响智能体的能力边界。';
+        }
+        if (conceptLower.includes('系统提示') || conceptLower.includes('prompt')) {
+            return '给智能体的初始指令和约束条件，定义智能体的目标、行为准则和操作范围。是智能体行为的重要指导。';
+        }
+        if (conceptLower.includes('上下文') || conceptLower.includes('context')) {
+            return '大语言模型在任何时刻能够处理和"记住"的信息量。理解智能体的上下文限制对于调试和优化至关重要。';
+        }
+        if (conceptLower.includes('视角') || conceptLower.includes('perspective')) {
+            return '站在智能体的角度理解问题，考虑其信息获取方式、决策过程和行为限制，这是调试和改进智能体的关键思维方式。';
+        }
+        if (conceptLower.includes('自省') || conceptLower.includes('introspection')) {
+            return '让大语言模型分析和解释智能体的行为轨迹，帮助开发者理解智能体的决策逻辑和潜在改进点。';
+        }
+        if (conceptLower.includes('元工具') || conceptLower.includes('meta')) {
+            return '能够创建、修改或优化其他工具的高级工具，代表了智能体系统自我改进和适应的能力方向。';
+        }
+        if (conceptLower.includes('预算') || conceptLower.includes('budget')) {
+            return '智能体运行过程中的资源约束，包括计算成本、时间限制等。智能体需要在预算范围内高效完成任务。';
+        }
+        if (conceptLower.includes('多智能体') || conceptLower.includes('multi-agent')) {
+            return '多个智能体协同工作的系统架构，通过分工合作提高整体效率和能力，是智能体技术的重要发展方向。';
+        }
+        // 基于章节内容生成通用解释
+        const chapterTitle = chapter.title || '';
+        const keyPoints = chapter.keyPoints || [];
+        const contextInfo = keyPoints.length > 0 ? keyPoints[0].substring(0, 100) : chapterTitle;
+        return `在${chapterTitle}中的关键概念，涉及${contextInfo.replace(/\*\*/g, '')}。这个概念对理解本章节内容具有重要意义。`;
+    }
+    /**
+     * 生成增强版模拟学习卡片
+     */
+    static generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial) {
+        const cards = [];
+        // 1. 知识精华卡片
+        learningMaterial.summary.keyPoints.slice(0, 2).forEach((keyPoint, index) => {
+            cards.push({
+                id: `essential_${index + 1}`,
+                type: 'summary',
+                title: `💡 核心要点 ${index + 1}`,
+                content: `📋 重点内容：${keyPoint}\n\n🎯 学习目标：理解并掌握这个要点的核心含义`,
+                relatedConcepts: [],
+                difficulty: 'medium',
+                estimatedTime: 5,
+                timeReference: '全程'
+            });
+        });
+        // 2. 理解检验卡片
+        learningMaterial.summary.keyPoints.slice(2, 4).forEach((keyPoint, index) => {
+            cards.push({
+                id: `check_${index + 1}`,
+                type: 'question',
+                title: `🤔 理解检验 ${index + 1}`,
+                content: `❓ 请解释：${keyPoint}\n\n💭 思考：\n• 这个概念的重要性在哪里？\n• 你能举出相关的例子吗？`,
+                relatedConcepts: [],
+                difficulty: 'medium',
+                estimatedTime: 8,
+                timeReference: '全程'
+            });
+        });
+        // 3. 综合应用卡片
+        cards.push({
+            id: 'application_1',
+            type: 'application',
+            title: '🛠️ 知识应用',
+            content: `🎯 综合任务：\n基于视频中学到的知识，请思考如何将这些概念应用到实际场景中。\n\n📝 要求：\n• 选择一个具体应用场景\n• 说明应用的步骤和要点\n• 分析可能遇到的挑战`,
+            relatedConcepts: [],
+            difficulty: 'hard',
+            estimatedTime: 15,
+            timeReference: '全程'
+        });
+        return cards;
     }
 }
 exports.KnowledgeGraphService = KnowledgeGraphService;

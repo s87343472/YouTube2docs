@@ -333,7 +333,7 @@ async function videoRoutes(fastify) {
                 type: 'object',
                 properties: {
                     id: { type: 'string' },
-                    format: { type: 'string', enum: ['pdf', 'markdown', 'json'] }
+                    format: { type: 'string', enum: ['pdf', 'markdown'] }
                 },
                 required: ['id', 'format']
             }
@@ -351,12 +351,6 @@ async function videoRoutes(fastify) {
             const timestamp = new Date().toISOString().split('T')[0];
             const safeTitle = `learning_material_${id.substring(0, 8)}`;
             switch (format) {
-                case 'json':
-                    reply
-                        .header('Content-Type', 'application/json')
-                        .header('Content-Disposition', `attachment; filename=${safeTitle}_${timestamp}.json`)
-                        .send(JSON.stringify(learningMaterial, null, 2));
-                    break;
                 case 'markdown':
                     const markdownContent = generateMarkdownContent(learningMaterial);
                     reply
@@ -365,10 +359,9 @@ async function videoRoutes(fastify) {
                         .send(markdownContent);
                     break;
                 case 'pdf':
-                    // 由于PDF生成比较复杂，先返回HTML格式，用户可以在浏览器中打印为PDF
                     const htmlContent = generateHTMLContent(learningMaterial);
                     reply
-                        .header('Content-Type', 'text/html')
+                        .header('Content-Type', 'text/html; charset=utf-8')
                         .header('Content-Disposition', `inline; filename=${safeTitle}_${timestamp}.html`)
                         .send(htmlContent);
                     break;
@@ -386,6 +379,86 @@ async function videoRoutes(fastify) {
             });
         }
     });
+}
+/**
+ * 将 Markdown 格式转换为 HTML
+ */
+function convertMarkdownToHTML(text) {
+    if (!text || typeof text !== 'string') {
+        return text || '';
+    }
+    let html = text
+        // 处理粗体：**text** -> <strong>text</strong>
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // 处理斜体：*text* -> <em>text</em> (但不处理已经被粗体处理过的内容)
+        .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+        // 处理无序列表项：- item -> <li>item</li>
+        .replace(/^[\s]*[-*+]\s+(.+)$/gm, '<li>$1</li>')
+        // 处理数字列表项：1. item -> <li>item</li>
+        .replace(/^[\s]*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+        // 处理换行符
+        .replace(/\n/g, '<br/>')
+        // 包装连续的列表项
+        .replace(/(<li>.*?<\/li>)(\s*<br\/>\s*<li>.*?<\/li>)*/g, (match) => {
+        // 移除列表项之间的 <br/>
+        const cleanMatch = match.replace(/<br\/>/g, '');
+        return `<ul>${cleanMatch}</ul>`;
+    })
+        // 清理多余的 <br/> 标签
+        .replace(/(<br\/>){3,}/g, '<br/><br/>');
+    return html;
+}
+/**
+ * 生成问答卡片的建议答案
+ */
+function generateQuestionSuggestions(card, index) {
+    // 根据问题内容生成建议答案
+    const questionContent = card.content || '';
+    if (questionContent.includes('解释')) {
+        return `
+    <strong>💡 答题思路：</strong><br/>
+    1. <strong>定义概念：</strong> 先明确核心概念的定义<br/>
+    2. <strong>说明重要性：</strong> 解释为什么这个概念重要<br/>
+    3. <strong>举例说明：</strong> 用具体例子来阐述<br/>
+    4. <strong>关联思考：</strong> 思考与其他概念的关系<br/><br/>
+    
+    <strong>🎯 参考要点：</strong><br/>
+    • 从基础概念入手，逐步深入<br/>
+    • 结合实际应用场景思考<br/>
+    • 注意概念之间的逻辑关系<br/>
+    • 可以对比相似或相反的概念
+    `;
+    }
+    else if (questionContent.includes('应用') || questionContent.includes('实践')) {
+        return `
+    <strong>💡 答题思路：</strong><br/>
+    1. <strong>理解场景：</strong> 明确应用的具体场景<br/>
+    2. <strong>分析步骤：</strong> 列出实施的具体步骤<br/>
+    3. <strong>考虑挑战：</strong> 思考可能遇到的问题<br/>
+    4. <strong>评估效果：</strong> 预期能达到的效果<br/><br/>
+    
+    <strong>🎯 参考要点：</strong><br/>
+    • 结合理论知识和实际情况<br/>
+    • 考虑不同场景下的适用性<br/>
+    • 思考实施过程中的关键因素<br/>
+    • 评估可行性和预期效果
+    `;
+    }
+    else {
+        return `
+    <strong>💡 答题思路：</strong><br/>
+    1. <strong>理解题意：</strong> 仔细分析问题的核心要求<br/>
+    2. <strong>回顾知识：</strong> 回想相关的理论知识<br/>
+    3. <strong>组织答案：</strong> 有逻辑地组织回答内容<br/>
+    4. <strong>检查完整：</strong> 确保答案完整准确<br/><br/>
+    
+    <strong>🎯 参考要点：</strong><br/>
+    • 答案要有逻辑性和条理性<br/>
+    • 结合学习材料中的具体内容<br/>
+    • 可以用自己的理解重新表述<br/>
+    • 注意答案的完整性和准确性
+    `;
+    }
 }
 /**
  * 生成Markdown格式内容
@@ -481,16 +554,20 @@ function generateHTMLContent(material) {
         h2 { border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; margin-top: 30px; }
         .video-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
         .concept { background: #e8f4fd; padding: 10px; margin: 10px 0; border-left: 4px solid #3498db; }
-        .chapter { margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 5px; }
+        .chapter { margin: 20px 0; padding: 15px; border: 1px solid #e0e0e0; border-radius: 5px; page-break-inside: avoid; }
         .key-points { list-style-type: none; padding: 0; }
         .key-points li { padding: 5px 0; padding-left: 20px; position: relative; }
         .key-points li:before { content: "▸"; color: #3498db; position: absolute; left: 0; }
+        details { margin: 10px 0; }
+        details summary { padding: 8px; cursor: pointer; user-select: none; }
+        details[open] summary { border-bottom: 1px solid #ddd; }
         .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #bdc3c7; text-align: center; color: #7f8c8d; }
         @media print {
             body { font-size: 12px; }
             h1 { font-size: 18px; }
             h2 { font-size: 16px; }
             h3 { font-size: 14px; }
+            .footer div { display: none; } /* Hide PDF instructions when printing */
         }
     </style>
 </head>
@@ -510,15 +587,15 @@ function generateHTMLContent(material) {
     
     <h3>🎯 核心要点</h3>
     <ul class="key-points">
-        ${summary.keyPoints.map((point) => `<li>${point}</li>`).join('')}
+        ${summary.keyPoints.map((point) => `<li>${convertMarkdownToHTML(point)}</li>`).join('')}
     </ul>
     
     ${summary.concepts && summary.concepts.length > 0 ? `
     <h3>💡 核心概念</h3>
     ${summary.concepts.map((concept) => `
         <div class="concept">
-            <h4>${concept.name}</h4>
-            <p>${concept.explanation}</p>
+            <h4>${convertMarkdownToHTML(concept.name)}</h4>
+            <p>${convertMarkdownToHTML(concept.explanation)}</p>
         </div>
     `).join('')}
     ` : ''}
@@ -529,14 +606,41 @@ function generateHTMLContent(material) {
         <div class="chapter">
             <h3>${index + 1}. ${chapter.title}</h3>
             <p><strong>时间范围:</strong> ${chapter.timeRange}</p>
+            
+            ${chapter.detailedExplanation ? `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
+                    <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📚 详细解释</h4>
+                    <div style="line-height: 1.6;">${convertMarkdownToHTML(chapter.detailedExplanation)}</div>
+                </div>
+            ` : ''}
+            
             ${chapter.keyPoints && chapter.keyPoints.length > 0 ? `
-                <p><strong>要点:</strong></p>
+                <p><strong>🎯 核心要点:</strong></p>
                 <ul class="key-points">
-                    ${chapter.keyPoints.map((point) => `<li>${point}</li>`).join('')}
+                    ${chapter.keyPoints.map((point) => `<li>${convertMarkdownToHTML(point)}</li>`).join('')}
                 </ul>
             ` : ''}
+            
+            ${chapter.examples && chapter.examples.length > 0 ? `
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+                    <h4 style="margin: 0 0 10px 0; color: #2c3e50;">💡 具体例子</h4>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        ${chapter.examples.map((example) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHTML(example)}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
+            ${chapter.practicalApplications && chapter.practicalApplications.length > 0 ? `
+                <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #17a2b8;">
+                    <h4 style="margin: 0 0 10px 0; color: #2c3e50;">🛠️ 实际应用</h4>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        ${chapter.practicalApplications.map((app) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHTML(app)}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
             ${chapter.concepts && chapter.concepts.length > 0 ? `
-                <p><strong>涉及概念:</strong> ${chapter.concepts.join(', ')}</p>
+                <p><strong>🔑 涉及概念:</strong> ${chapter.concepts.join(', ')}</p>
             ` : ''}
         </div>
     `).join('')}
@@ -549,19 +653,78 @@ function generateHTMLContent(material) {
     ` : ''}
     
     ${studyCards && studyCards.length > 0 ? `
-    <h2>📚 学习卡片</h2>
-    ${studyCards.map((card, index) => `
-        <div class="chapter">
-            <h3>卡片 ${index + 1}: ${card.title || card.question}</h3>
-            ${card.content ? `<p>${card.content}</p>` : ''}
-            ${card.answer ? `<p><strong>答案:</strong> ${card.answer}</p>` : ''}
-        </div>
-    `).join('')}
+    <h2>📚 智能学习卡片</h2>
+    <p style="color: #666; margin-bottom: 20px;">以下卡片将帮助你系统性地掌握和巩固视频中的核心知识点，完全脱离视频即可完成学习</p>
+    
+    ${studyCards.map((card, index) => {
+        const cardTypeIcon = card.type === 'summary' ? '💡' :
+            card.type === 'question' ? '🤔' :
+                card.type === 'application' ? '🛠️' :
+                    card.type === 'concept' ? '🧠' : '📝';
+        const difficultyColor = card.difficulty === 'easy' ? '#28a745' :
+            card.difficulty === 'medium' ? '#ffc107' : '#dc3545';
+        const difficultyText = card.difficulty === 'easy' ? '简单' :
+            card.difficulty === 'medium' ? '中等' : '困难';
+        // 处理问答卡片，添加折叠的建议答案
+        let cardContent = card.content || '请参考视频内容进行学习。';
+        let answerSection = '';
+        if (card.type === 'question') {
+            // 为问答卡片生成建议答案
+            const suggestions = generateQuestionSuggestions(card, index);
+            answerSection = `
+            <div style="margin-top: 15px;">
+                <details style="background: #f1f3f4; padding: 10px; border-radius: 6px; border-left: 3px solid #4285f4;">
+                    <summary style="cursor: pointer; font-weight: bold; color: #1a73e8; padding: 5px 0;">
+                        💡 点击查看建议答案
+                    </summary>
+                    <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; line-height: 1.6;">
+                        ${suggestions}
+                    </div>
+                </details>
+            </div>`;
+        }
+        return `
+        <div class="chapter" style="border-left: 4px solid ${difficultyColor}; margin: 20px 0; position: relative; page-break-inside: avoid;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: #2c3e50;">${card.title || `学习卡片 ${index + 1}`}</h3>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 12px;">
+                    <span style="background: ${difficultyColor}; color: white; padding: 2px 8px; border-radius: 12px;">${difficultyText}</span>
+                    <span style="color: #666;">⏱️ ${card.estimatedTime || 5}分钟</span>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; line-height: 1.7;">
+                ${convertMarkdownToHTML(cardContent)}
+            </div>
+            
+            ${answerSection}
+            
+            ${card.timeReference && card.timeReference !== '全程' ?
+            `<p style="margin-top: 10px; color: #666; font-size: 14px;"><strong>📍 视频时间:</strong> ${card.timeReference}</p>` : ''}
+        </div>`;
+    }).join('')}
+    
+    <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3498db;">
+        <h4 style="margin: 0 0 10px 0; color: #2c3e50;">💡 学习建议</h4>
+        <ul style="margin: 0; padding-left: 20px; color: #666;">
+            <li>建议按照卡片顺序进行学习，每张卡片完成后再进入下一张</li>
+            <li>对于问题类卡片，先尝试自己回答，再对照视频内容</li>
+            <li>应用类卡片需要结合实际场景思考，可以记录自己的想法</li>
+            <li>定期回顾之前的卡片，巩固学习效果</li>
+        </ul>
+    </div>
     ` : ''}
     
     <div class="footer">
         <p>由YouTube智能学习资料生成器生成 - ${new Date().toLocaleString()}</p>
-        <p>打印提示: 使用浏览器的打印功能，选择"保存为PDF"即可生成PDF文件</p>
+        <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3498db;">
+            <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📄 如何生成PDF</h4>
+            <p style="margin: 0; color: #666; line-height: 1.6;">
+                1. 按 <strong>Ctrl+P</strong> (Windows) 或 <strong>Cmd+P</strong> (Mac) 打开打印对话框<br/>
+                2. 在目标打印机中选择 <strong>"保存为PDF"</strong><br/>
+                3. 点击 <strong>"保存"</strong> 即可下载PDF文件
+            </p>
+        </div>
     </div>
 </body>
 </html>

@@ -252,30 +252,47 @@ class YouTubeService {
      * 验证视频是否适合处理
      */
     static validateVideoForProcessing(videoInfo) {
-        // 检查时长限制（最大2小时，可配置）
+        // 检查时长限制（最大2小时）
         const durationSeconds = this.parseDurationToSeconds(videoInfo.duration);
-        const maxDuration = 7200; // 2小时，可以根据需要调整
+        const maxDuration = 7200; // 2小时
+        const currentDurationStr = this.formatDuration(durationSeconds);
+        const maxDurationStr = this.formatDuration(maxDuration);
         if (durationSeconds > maxDuration) {
             return {
                 valid: false,
-                reason: `Video duration exceeds ${Math.floor(maxDuration / 3600)} hour limit`
+                reason: `视频时长过长 (${currentDurationStr})，超出免费版限制 (${maxDurationStr})`,
+                suggestion: '💡 建议：1) 选择较短视频(≤2小时) 2) 分段处理长内容 3) 升级付费版处理大型视频',
+                limits: {
+                    maxDuration: maxDurationStr,
+                    currentDuration: currentDurationStr,
+                    exceeded: true
+                }
             };
         }
         // 检查是否有有效标题
         if (!videoInfo.title || videoInfo.title.length < 10) {
             return {
                 valid: false,
-                reason: 'Video title is too short or missing'
+                reason: '视频标题信息不完整',
+                suggestion: '请检查视频链接是否有效且可访问'
             };
         }
         // 检查频道信息
         if (!videoInfo.channel) {
             return {
                 valid: false,
-                reason: 'Channel information is missing'
+                reason: '无法获取频道信息',
+                suggestion: '请确认视频为公开可访问状态'
             };
         }
-        return { valid: true };
+        return {
+            valid: true,
+            limits: {
+                maxDuration: maxDurationStr,
+                currentDuration: currentDurationStr,
+                exceeded: false
+            }
+        };
     }
     /**
      * 获取视频分类和难度评估

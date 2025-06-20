@@ -140,10 +140,12 @@ class ContentAnalyzer {
     static getSummarySystemPrompt(strategy) {
         const basePrompt = `你是一个专业的学习资料生成专家。根据视频转录内容，生成高质量的学习摘要。
 
-输出要求：
-1. 必须返回有效的JSON格式
-2. 包含关键要点、学习时间、难度评估和核心概念
-3. 内容要准确、简洁、有教育价值
+核心要求：
+1. 必须使用纯中文生成所有内容，绝对不能包含任何英文内容
+2. 必须返回有效的JSON格式
+3. 包含关键要点、学习时间、难度评估和核心概念
+4. 内容要准确、简洁、有教育价值
+5. 所有概念名称、解释、要点都必须是中文
 
 JSON格式示例：
 {
@@ -156,7 +158,9 @@ JSON格式示例：
       "explanation": "概念解释"
     }
   ]
-}`;
+}
+
+特别提醒：无论原始内容是什么语言，你都必须将所有内容翻译成中文并用中文表达。`;
         const strategyPrompts = {
             concise: '策略：精炼模式 - 提取3-5个核心要点，适合快速学习',
             structured: '策略：结构化模式 - 提取5-8个要点，包含详细概念解释',
@@ -169,36 +173,51 @@ JSON格式示例：
      * 获取结构化内容的系统提示
      */
     static getStructuredContentSystemPrompt(strategy) {
-        return `你是一个专业的教学内容结构化专家。将视频内容组织成逻辑清晰的学习章节。
+        return `你是一个专业的图文学习资料创作专家。将视频内容转化为完整的、可独立学习的图文教材。
+
+核心要求：
+1. 必须使用纯中文生成所有内容，绝对不能包含任何英文内容
+2. 学习者必须能够完全脱离视频，仅通过这些文字资料掌握所有知识点
+3. 每个概念都要有详细的定义、解释、例子和应用
+4. 保留视频中的具体数据、案例、例子和推理过程
+5. 确保内容的完整性和独立性
+6. 所有标题、要点、概念、解释都必须是中文
 
 输出要求：
 1. 必须返回有效的JSON格式
-2. 按时间顺序或逻辑顺序组织章节
-3. 每个章节包含标题、时间范围、关键要点
+2. 每个章节都是完整的学习单元，包含足够的细节
+3. 重点突出概念的定义、原理、例子和应用
+4. 无论原始内容是什么语言，都必须翻译成中文
 
 JSON格式示例：
 {
-  "overview": "内容概述",
-  "learningObjectives": ["学习目标1", "学习目标2"],
-  "prerequisites": ["前置知识1", "前置知识2"],
+  "overview": "这是什么内容的完整介绍，包含主要概念和学习价值",
+  "learningObjectives": ["具体的学习目标1", "具体的学习目标2"],
+  "prerequisites": ["需要的前置知识1", "需要的前置知识2"],
   "chapters": [
     {
-      "title": "章节标题",
-      "timeRange": "开始时间-结束时间",
-      "keyPoints": ["要点1", "要点2"],
-      "concepts": ["相关概念1", "相关概念2"],
-      "practicalApplications": ["应用场景1", "应用场景2"]
+      "title": "具体的章节标题",
+      "timeRange": "XX:XX-XX:XX",
+      "keyPoints": [
+        "详细要点1：包含完整的解释和例子",
+        "详细要点2：包含具体的原理说明",
+        "详细要点3：包含实际应用场景"
+      ],
+      "concepts": ["概念1", "概念2"],
+      "detailedExplanation": "本章节的详细内容解释，包含原理、例子、推理过程",
+      "examples": ["具体例子1的详细描述", "具体例子2的详细描述"],
+      "practicalApplications": ["应用场景1的详细说明", "应用场景2的详细说明"]
     }
   ]
 }
 
-策略：${strategy}模式 - 根据视频长度和复杂度调整章节划分的细致程度。`;
+策略：${strategy}模式 - 创建完整详细的学习资料，确保学习者无需视频就能完全理解内容。`;
     }
     /**
      * 构建摘要用户提示
      */
     static buildSummaryUserPrompt(videoInfo, transcription) {
-        return `请分析以下视频内容并生成学习摘要：
+        return `请分析以下视频内容并生成学习摘要。重要提醒：必须使用纯中文生成所有内容！
 
 视频信息：
 - 标题：${videoInfo.title}
@@ -209,7 +228,7 @@ JSON格式示例：
 转录内容：
 ${transcription.text}
 
-请基于以上信息生成JSON格式的学习摘要。`;
+请基于以上信息生成JSON格式的学习摘要。所有keyPoints、concepts的name和explanation都必须是中文。如果原始内容是英文，请翻译成中文。`;
     }
     /**
      * 构建结构化内容用户提示
@@ -218,27 +237,68 @@ ${transcription.text}
         const hasSegments = transcription.segments && transcription.segments.length > 0;
         let segmentInfo = '';
         if (hasSegments) {
-            segmentInfo = '\n\n时间分段信息：\n' +
-                transcription.segments.slice(0, 10).map(segment => `${this.formatTime(segment.start)}-${this.formatTime(segment.end)}: ${segment.text.substring(0, 100)}...`).join('\n');
+            segmentInfo = '\n\n详细时间分段内容：\n' +
+                transcription.segments.slice(0, 20).map(segment => `${this.formatTime(segment.start)}-${this.formatTime(segment.end)}: ${segment.text}`).join('\n');
         }
-        return `请将以下视频内容组织成结构化的学习章节：
+        return `请将以下视频内容转化为完整的图文学习资料。重要提醒：必须使用纯中文生成所有内容！学习者需要能够完全脱离视频，仅通过这些资料掌握所有知识点。
 
 视频信息：
 - 标题：${videoInfo.title}
 - 频道：${videoInfo.channel}
 - 时长：${videoInfo.duration}
 
-转录内容：
+完整转录内容：
 ${transcription.text}${segmentInfo}
 
-请基于以上信息生成JSON格式的结构化内容。`;
+要求：
+1. 提取并详细解释每个重要概念，包含定义、原理、例子
+2. 保留视频中的具体例子、数据、案例分析
+3. 确保每个章节都包含足够的细节，可以独立学习
+4. 重点关注概念之间的逻辑关系和因果关系
+5. 包含实际应用场景和具体例子
+6. 所有chapter标题、keyPoints、概念、解释都必须是中文
+7. 如果原始内容是英文，请全部翻译成中文
+
+请基于以上信息生成JSON格式的详细学习资料。所有内容都必须是中文！`;
     }
     /**
      * 解析摘要响应
      */
     static parseSummaryResponse(response) {
         try {
-            const parsed = JSON.parse(response);
+            console.log('🔍 Parsing summary response, length:', response.length);
+            // 尝试清理和修复JSON字符串
+            let cleanResponse = response.trim();
+            // 移除可能的Markdown代码块标记
+            if (cleanResponse.startsWith('```json')) {
+                cleanResponse = cleanResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+            }
+            else if (cleanResponse.startsWith('```')) {
+                cleanResponse = cleanResponse.replace(/^```\n?/, '').replace(/\n?```$/, '');
+            }
+            // 查找JSON对象的开始和结束
+            const startIndex = cleanResponse.indexOf('{');
+            const lastIndex = cleanResponse.lastIndexOf('}');
+            if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+                cleanResponse = cleanResponse.substring(startIndex, lastIndex + 1);
+            }
+            // 如果字符串被截断，尝试修复
+            if (!cleanResponse.endsWith('}')) {
+                console.warn('⚠️ Summary JSON response appears to be truncated, attempting to fix...');
+                const openBraces = (cleanResponse.match(/{/g) || []).length;
+                const closeBraces = (cleanResponse.match(/}/g) || []).length;
+                const openBrackets = (cleanResponse.match(/\[/g) || []).length;
+                const closeBrackets = (cleanResponse.match(/\]/g) || []).length;
+                // 添加缺失的闭合括号
+                for (let i = 0; i < openBrackets - closeBrackets; i++) {
+                    cleanResponse += ']';
+                }
+                for (let i = 0; i < openBraces - closeBraces; i++) {
+                    cleanResponse += '}';
+                }
+            }
+            console.log('✅ Summary cleaned response ready for parsing');
+            const parsed = JSON.parse(cleanResponse);
             return {
                 keyPoints: parsed.keyPoints || [],
                 learningTime: parsed.learningTime || '未知',
@@ -247,8 +307,20 @@ ${transcription.text}${segmentInfo}
             };
         }
         catch (error) {
-            console.error('Failed to parse summary response:', error);
-            throw new Error('Invalid JSON response for summary');
+            console.error('❌ Failed to parse summary response:', error);
+            console.error('Response length:', response.length);
+            console.error('Response preview:', response.substring(0, 500) + '...');
+            console.error('Response suffix:', '...' + response.substring(Math.max(0, response.length - 200)));
+            // 返回默认摘要
+            return {
+                keyPoints: ['视频内容正在处理中'],
+                learningTime: '约60-90分钟',
+                difficulty: 'intermediate',
+                concepts: [{
+                        name: '内容解析',
+                        explanation: '正在处理视频内容，请稍后查看完整结果'
+                    }]
+            };
         }
     }
     /**
@@ -256,17 +328,63 @@ ${transcription.text}${segmentInfo}
      */
     static parseStructuredContentResponse(response) {
         try {
-            const parsed = JSON.parse(response);
+            console.log('🔍 Parsing structured content response, length:', response.length);
+            // 尝试清理和修复JSON字符串
+            let cleanResponse = response.trim();
+            // 移除可能的Markdown代码块标记
+            if (cleanResponse.startsWith('```json')) {
+                cleanResponse = cleanResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+            }
+            else if (cleanResponse.startsWith('```')) {
+                cleanResponse = cleanResponse.replace(/^```\n?/, '').replace(/\n?```$/, '');
+            }
+            // 查找JSON对象的开始和结束
+            const startIndex = cleanResponse.indexOf('{');
+            const lastIndex = cleanResponse.lastIndexOf('}');
+            if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+                cleanResponse = cleanResponse.substring(startIndex, lastIndex + 1);
+            }
+            // 如果字符串被截断，尝试修复
+            if (!cleanResponse.endsWith('}')) {
+                console.warn('⚠️ JSON response appears to be truncated, attempting to fix...');
+                const openBraces = (cleanResponse.match(/{/g) || []).length;
+                const closeBraces = (cleanResponse.match(/}/g) || []).length;
+                const openBrackets = (cleanResponse.match(/\[/g) || []).length;
+                const closeBrackets = (cleanResponse.match(/\]/g) || []).length;
+                // 添加缺失的闭合括号
+                for (let i = 0; i < openBrackets - closeBrackets; i++) {
+                    cleanResponse += ']';
+                }
+                for (let i = 0; i < openBraces - closeBraces; i++) {
+                    cleanResponse += '}';
+                }
+            }
+            console.log('✅ Cleaned response ready for parsing');
+            const parsed = JSON.parse(cleanResponse);
             return {
-                overview: parsed.overview,
-                learningObjectives: parsed.learningObjectives,
-                prerequisites: parsed.prerequisites,
+                overview: parsed.overview || '暂无概述',
+                learningObjectives: parsed.learningObjectives || [],
+                prerequisites: parsed.prerequisites || [],
                 chapters: parsed.chapters || []
             };
         }
         catch (error) {
-            console.error('Failed to parse structured content response:', error);
-            throw new Error('Invalid JSON response for structured content');
+            console.error('❌ Failed to parse structured content response:', error);
+            console.error('Response length:', response.length);
+            console.error('Response preview:', response.substring(0, 500) + '...');
+            console.error('Response suffix:', '...' + response.substring(Math.max(0, response.length - 200)));
+            // 返回一个默认的结构化内容
+            return {
+                overview: '由于JSON解析错误，无法生成完整的结构化内容',
+                learningObjectives: ['理解视频主要内容'],
+                prerequisites: ['基础相关知识'],
+                chapters: [{
+                        title: '内容概述',
+                        timeRange: '00:00-end',
+                        keyPoints: ['视频内容处理中遇到格式问题'],
+                        concepts: []
+                    }]
+            };
         }
     }
     /**

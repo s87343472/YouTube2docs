@@ -49,6 +49,12 @@ export declare class YouTubeService {
     static validateVideoForProcessing(videoInfo: VideoInfo): {
         valid: boolean;
         reason?: string;
+        suggestion?: string;
+        limits?: {
+            maxDuration: string;
+            currentDuration: string;
+            exceeded: boolean;
+        };
     };
     /**
      * 获取视频分类和难度评估

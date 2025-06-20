@@ -380,6 +380,56 @@ export async function videoRoutes(fastify: FastifyInstance) {
 }
 
 /**
+ * 将 Markdown 格式转换为 HTML
+ */
+function convertMarkdownToHtml(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return text || '';
+  }
+  
+  let html = text
+    // 处理粗体：**text** -> <strong>text</strong>
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // 处理斜体：*text* -> <em>text</em> (但不处理已经被粗体处理过的内容)
+    .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+    // 处理无序列表项：- item -> <li>item</li>
+    .replace(/^[\s]*[-*+]\s+(.+)$/gm, '<li>$1</li>')
+    // 处理数字列表项：1. item -> <li>item</li>
+    .replace(/^[\s]*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    // 处理换行符
+    .replace(/\n/g, '<br/>')
+    // 包装连续的列表项
+    .replace(/(<li>.*?<\/li>)(\s*<br\/>\s*<li>.*?<\/li>)*/g, (match) => {
+      // 移除列表项之间的 <br/>
+      const cleanMatch = match.replace(/<br\/>/g, '');
+      return `<ul>${cleanMatch}</ul>`;
+    })
+    // 清理多余的 <br/> 标签
+    .replace(/(<br\/>){3,}/g, '<br/><br/>');
+    
+  return html;
+}
+
+/**
+ * 将markdown格式转换为HTML
+ */
+function convertMarkdownToHtml(text: string): string {
+  if (!text) return text
+  
+  return text
+    // 处理粗体 **text** -> <strong>text</strong>
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // 处理斜体 *text* -> <em>text</em>
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // 处理代码块 `code` -> <code>code</code>
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    // 处理链接 [text](url) -> <a href="url">text</a>
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // 保持换行
+    .replace(/\n/g, '<br/>')
+}
+
+/**
  * 生成问答卡片的建议答案
  */
 function generateQuestionSuggestions(card: any, index: number): string {
@@ -570,15 +620,15 @@ function generateHTMLContent(material: any): string {
     
     <h3>🎯 核心要点</h3>
     <ul class="key-points">
-        ${summary.keyPoints.map((point: string) => `<li>${point}</li>`).join('')}
+        ${summary.keyPoints.map((point: string) => `<li>${convertMarkdownToHtml(point)}</li>`).join('')}
     </ul>
     
     ${summary.concepts && summary.concepts.length > 0 ? `
     <h3>💡 核心概念</h3>
     ${summary.concepts.map((concept: any) => `
         <div class="concept">
-            <h4>${concept.name}</h4>
-            <p>${concept.explanation}</p>
+            <h4>${convertMarkdownToHtml(concept.name)}</h4>
+            <p>${convertMarkdownToHtml(concept.explanation)}</p>
         </div>
     `).join('')}
     ` : ''}
@@ -593,14 +643,14 @@ function generateHTMLContent(material: any): string {
             ${chapter.detailedExplanation ? `
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📚 详细解释</h4>
-                    <div style="white-space: pre-line; line-height: 1.6;">${chapter.detailedExplanation}</div>
+                    <div style="line-height: 1.6;">${convertMarkdownToHtml(chapter.detailedExplanation)}</div>
                 </div>
             ` : ''}
             
             ${chapter.keyPoints && chapter.keyPoints.length > 0 ? `
                 <p><strong>🎯 核心要点:</strong></p>
                 <ul class="key-points">
-                    ${chapter.keyPoints.map((point: string) => `<li style="white-space: pre-line;">${point}</li>`).join('')}
+                    ${chapter.keyPoints.map((point: string) => `<li>${convertMarkdownToHtml(point)}</li>`).join('')}
                 </ul>
             ` : ''}
             
@@ -608,7 +658,7 @@ function generateHTMLContent(material: any): string {
                 <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">💡 具体例子</h4>
                     <ul style="margin: 0; padding-left: 20px;">
-                        ${chapter.examples.map((example: string) => `<li style="margin: 10px 0; white-space: pre-line; line-height: 1.6;">${example}</li>`).join('')}
+                        ${chapter.examples.map((example: string) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHtml(example)}</li>`).join('')}
                     </ul>
                 </div>
             ` : ''}
@@ -617,7 +667,7 @@ function generateHTMLContent(material: any): string {
                 <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #17a2b8;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">🛠️ 实际应用</h4>
                     <ul style="margin: 0; padding-left: 20px;">
-                        ${chapter.practicalApplications.map((app: string) => `<li style="margin: 10px 0; white-space: pre-line; line-height: 1.6;">${app}</li>`).join('')}
+                        ${chapter.practicalApplications.map((app: string) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHtml(app)}</li>`).join('')}
                     </ul>
                 </div>
             ` : ''}
@@ -681,8 +731,8 @@ function generateHTMLContent(material: any): string {
                 </div>
             </div>
             
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; white-space: pre-line; line-height: 1.7;">
-                ${cardContent}
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; line-height: 1.7;">
+                ${convertMarkdownToHtml(cardContent)}
             </div>
             
             ${answerSection}

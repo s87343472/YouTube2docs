@@ -65,6 +65,8 @@ export interface Chapter {
     keyPoints: string[];
     concepts: string[];
     practicalApplications?: string[];
+    detailedExplanation?: string;
+    examples?: string[];
 }
 export interface KnowledgeGraph {
     nodes: KnowledgeNode[];
@@ -103,7 +105,7 @@ export interface KnowledgeEdge {
 }
 export interface StudyCard {
     id: string;
-    type: 'concept' | 'definition' | 'example' | 'question' | 'summary';
+    type: 'concept' | 'definition' | 'example' | 'question' | 'summary' | 'application';
     title: string;
     content: string;
     relatedConcepts: string[];

@@ -52,7 +52,7 @@ class TranscriptionService {
                 const transcription = await groq.audio.transcriptions.create({
                     file: audioFile,
                     model: apis_1.API_CONFIG.GROQ.MODEL,
-                    language: language || 'auto', // 自动检测语言
+                    language: language || 'zh', // 默认使用中文，Groq不支持auto语言检测
                     response_format: 'verbose_json', // 获取详细信息包括时间戳
                     temperature: 0.0 // 最高准确性
                 });
