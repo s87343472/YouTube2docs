@@ -1,0 +1,158 @@
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+*.env
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# node_modules
+node_modules/
+*/node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+backend/temp/
+frontend/temp/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+Thumbs.db
+
+# Build directories
+build/
+dist/
+backend/dist/
+frontend/dist/
+
+# Test results
+test-results/
+*.test.js
+coverage/
+
+# Uploads and user data
+uploads/
+data/
+
+# Development files
+*.orig
+*.tmp
+*~
+
+# Sensitive keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.cert
+*.crt
+*.ca-bundle
+*.csr
+private_key*
+*.secret
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+backup/
+*.backup
+*.bak
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary items
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# HTML test files
+*.html
+!index.html
+!template.html
