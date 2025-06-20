@@ -666,8 +666,10 @@ ${learningMaterial.summary.keyPoints.join('\n')}
           content.push(`   定义: ${conceptDetail.explanation}`)
           content.push('')
         } else {
+          // 生成基于概念名称和章节内容的智能解释
+          const explanation = this.generateConceptExplanation(concept, chapter, learningMaterial)
           content.push(`📌 ${concept}`)
-          content.push(`   这是本章节中的重要概念，需要深入理解`)
+          content.push(`   定义: ${explanation}`)
           content.push('')
         }
       })
@@ -708,12 +710,25 @@ ${learningMaterial.summary.keyPoints.join('\n')}
   private static async generateComprehensionCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
     const cards: StudyCard[] = []
     
-    learningMaterial.summary.keyPoints.slice(0, 3).forEach((keyPoint, index) => {
+    // 从不同章节选择不同的要点，避免重复
+    const chapterPoints: string[] = []
+    learningMaterial.structuredContent.chapters.forEach(chapter => {
+      if (chapter.keyPoints && chapter.keyPoints.length > 0) {
+        // 取每个章节的第一个要点
+        chapterPoints.push(chapter.keyPoints[0])
+      }
+    })
+    
+    // 去重并选择前3个
+    const uniquePoints = Array.from(new Set(chapterPoints)).slice(0, 3)
+    
+    uniquePoints.forEach((keyPoint, index) => {
+      const shortPoint = keyPoint.length > 50 ? keyPoint.substring(0, 50) + '...' : keyPoint
       cards.push({
         id: `comprehension_${index + 1}`,
         type: 'question',
         title: `🤔 理解检验 ${index + 1}`,
-        content: `❓ 问题：请用自己的话解释"${keyPoint}"的含义和重要性。\n\n💭 思考要点：\n• 这个概念的核心是什么？\n• 它为什么重要？\n• 它与其他概念有什么关联？`,
+        content: `❓ 问题：请用自己的话解释"${shortPoint}"的含义和重要性。\n\n💭 思考要点：\n• 这个概念的核心是什么？\n• 它为什么重要？\n• 它与其他概念有什么关联？`,
         relatedConcepts: [],
         difficulty: 'medium',
         estimatedTime: 8,
@@ -773,6 +788,77 @@ ${learningMaterial.summary.keyPoints.join('\n')}
     }
     
     return cards
+  }
+
+  /**
+   * 生成概念解释（基于概念名称和章节内容）
+   */
+  private static generateConceptExplanation(concept: string, chapter: any, learningMaterial: LearningMaterial): string {
+    const conceptLower = concept.toLowerCase()
+    
+    // 基于概念名称的智能解释
+    if (conceptLower.includes('模糊性') || conceptLower.includes('ambiguity')) {
+      return '指任务的不确定性和复杂程度。高模糊性任务通常没有明确的步骤或固定的解决方案，需要智能体进行探索和适应性决策。'
+    }
+    
+    if (conceptLower.includes('价值') || conceptLower.includes('value')) {
+      return '指任务成功完成后能够带来的商业价值或重要性。高价值任务值得投入更多资源，包括使用更复杂的智能体系统。'
+    }
+    
+    if (conceptLower.includes('去风险') || conceptLower.includes('de-risk')) {
+      return '指在构建智能体前，先确保核心能力（如API集成、工具使用）已经验证可行，降低项目失败风险。'
+    }
+    
+    if (conceptLower.includes('错误成本') || conceptLower.includes('error') || conceptLower.includes('cost')) {
+      return '指智能体出错时造成的损失和影响程度。低错误成本的任务更适合用智能体，因为可以容忍试错和学习过程。'
+    }
+    
+    if (conceptLower.includes('模型') && conceptLower.includes('循环')) {
+      return '智能体的核心工作模式：模型接收输入，决定使用哪个工具，执行工具操作，获得反馈，然后重复这个过程直到完成任务。'
+    }
+    
+    if (conceptLower.includes('环境') || conceptLower.includes('environment')) {
+      return '智能体操作和交互的系统环境，为智能体提供感知信息并接收智能体的行动输出。环境的复杂性直接影响智能体的设计难度。'
+    }
+    
+    if (conceptLower.includes('工具') || conceptLower.includes('tool')) {
+      return '智能体用来在环境中执行具体操作的接口和功能模块。工具的质量和设计直接影响智能体的能力边界。'
+    }
+    
+    if (conceptLower.includes('系统提示') || conceptLower.includes('prompt')) {
+      return '给智能体的初始指令和约束条件，定义智能体的目标、行为准则和操作范围。是智能体行为的重要指导。'
+    }
+    
+    if (conceptLower.includes('上下文') || conceptLower.includes('context')) {
+      return '大语言模型在任何时刻能够处理和"记住"的信息量。理解智能体的上下文限制对于调试和优化至关重要。'
+    }
+    
+    if (conceptLower.includes('视角') || conceptLower.includes('perspective')) {
+      return '站在智能体的角度理解问题，考虑其信息获取方式、决策过程和行为限制，这是调试和改进智能体的关键思维方式。'
+    }
+    
+    if (conceptLower.includes('自省') || conceptLower.includes('introspection')) {
+      return '让大语言模型分析和解释智能体的行为轨迹，帮助开发者理解智能体的决策逻辑和潜在改进点。'
+    }
+    
+    if (conceptLower.includes('元工具') || conceptLower.includes('meta')) {
+      return '能够创建、修改或优化其他工具的高级工具，代表了智能体系统自我改进和适应的能力方向。'
+    }
+    
+    if (conceptLower.includes('预算') || conceptLower.includes('budget')) {
+      return '智能体运行过程中的资源约束，包括计算成本、时间限制等。智能体需要在预算范围内高效完成任务。'
+    }
+    
+    if (conceptLower.includes('多智能体') || conceptLower.includes('multi-agent')) {
+      return '多个智能体协同工作的系统架构，通过分工合作提高整体效率和能力，是智能体技术的重要发展方向。'
+    }
+    
+    // 基于章节内容生成通用解释
+    const chapterTitle = chapter.title || ''
+    const keyPoints = chapter.keyPoints || []
+    const contextInfo = keyPoints.length > 0 ? keyPoints[0].substring(0, 100) : chapterTitle
+    
+    return `在${chapterTitle}中的关键概念，涉及${contextInfo.replace(/\*\*/g, '')}。这个概念对理解本章节内容具有重要意义。`
   }
 
   /**
