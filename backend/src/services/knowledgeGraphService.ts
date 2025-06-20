@@ -59,7 +59,7 @@ export class KnowledgeGraphService {
     knowledgeGraph: KnowledgeGraph,
     learningMaterial: LearningMaterial
   ): Promise<StudyCard[]> {
-    console.log('📚 Generating enhanced study cards for effective learning')
+    console.log('📚 Generating enhanced study cards using batch API calls')
 
     try {
       if (!hasGeminiKey()) {
@@ -68,28 +68,25 @@ export class KnowledgeGraphService {
 
       const cards: StudyCard[] = []
 
-      // 1. 生成知识点精华卡片（基于章节重点）
-      const essentialCards = await this.generateEssentialCards(learningMaterial)
-      cards.push(...essentialCards)
+      // 分批次生成，每次传递最少必要信息，减少API调用复杂度
+      console.log('🔄 Batch 1: Generating concept cards...')
+      const conceptCards = await this.generateConceptCardsBatch(learningMaterial.summary.concepts.slice(0, 3), learningMaterial.videoInfo.title)
+      cards.push(...conceptCards)
 
-      // 2. 生成理解检验卡片
-      const comprehensionCards = await this.generateComprehensionCards(learningMaterial)
+      console.log('🔄 Batch 2: Generating comprehension cards...')
+      const comprehensionCards = await this.generateComprehensionCardsBatch(learningMaterial.summary.keyPoints.slice(0, 2))
       cards.push(...comprehensionCards)
 
-      // 3. 生成应用实践卡片
-      const practiceCards = await this.generatePracticeCards(learningMaterial)
-      cards.push(...practiceCards)
-
-      // 4. 生成记忆巩固卡片
-      const memoryCards = await this.generateMemoryCards(learningMaterial)
+      console.log('🔄 Batch 3: Generating memory cards...')
+      const memoryCards = await this.generateMemoryCardsBatch(learningMaterial.summary.concepts.slice(0, 2))
       cards.push(...memoryCards)
 
-      console.log(`✅ Generated ${cards.length} enhanced study cards`)
-      return cards.slice(0, 12) // 限制总数，保持质量
+      console.log(`✅ Generated ${cards.length} optimized study cards using batch approach`)
+      return cards.slice(0, 8) // 控制在8张以内，保证质量
 
     } catch (error) {
       console.error('❌ Failed to generate study cards:', error)
-      return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial)
+      return this.generateOptimizedMockStudyCards(knowledgeGraph, learningMaterial)
     }
   }
 
@@ -603,29 +600,253 @@ ${learningMaterial.summary.keyPoints.join('\n')}
   /**
    * 生成知识点精华卡片（详细学习笔记格式）
    */
-  private static async generateEssentialCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
-    const cards: StudyCard[] = []
-    
-    // 基于章节生成详细的学习笔记卡片
-    learningMaterial.structuredContent.chapters.forEach((chapter, index) => {
-      if (chapter.keyPoints && chapter.keyPoints.length > 0) {
-        // 构建详细的学习笔记内容
-        const detailedContent = this.generateDetailedNoteContent(chapter, learningMaterial)
-        
-        cards.push({
-          id: `note_${index + 1}`,
-          type: 'summary',
-          title: `📚 ${chapter.title}`,
-          content: detailedContent,
-          relatedConcepts: chapter.concepts || [],
-          difficulty: 'medium',
-          estimatedTime: 8,
-          timeReference: chapter.timeRange
-        })
+  /**
+   * 批次1：生成核心概念卡片 - 轻量级方法
+   */
+  private static async generateConceptCardsBatch(concepts: any[], videoTitle: string): Promise<StudyCard[]> {
+    const systemPrompt = `你是专业的学习卡片设计师。为视频核心概念生成高质量学习卡片。
+
+要求：
+1. 每个概念生成1张简洁实用的卡片
+2. 包含核心定义、记忆要点、实例说明
+3. 内容具体实用，避免空洞模板
+4. 返回JSON数组格式
+
+卡片格式：
+{
+  "id": "concept_X",
+  "type": "concept", 
+  "title": "核心概念：[概念名]",
+  "content": "📚 定义：[核心定义]\\n\\n💡 关键要点：\\n• [要点1]\\n• [要点2]\\n\\n🔗 记忆提示：[具体提示]",
+  "difficulty": "medium",
+  "estimatedTime": 5,
+  "timeReference": "全程"
+}`
+
+    const userPrompt = `视频：${videoTitle}
+
+核心概念：
+${concepts.map((c, i) => `${i+1}. ${c.name}：${c.explanation}`).join('\n')}
+
+请为每个概念生成1张学习卡片，返回JSON数组。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1500,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw concept batch response:', content.substring(0, 150) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
       }
-    })
-    
-    return cards.slice(0, 4) // 增加数量以包含更多详细内容
+      
+      console.log(`✅ Batch generated ${cards.length} concept cards`)
+      return cards
+    } catch (error) {
+      console.error('Failed to generate concept cards batch:', error)
+      return this.generateFallbackConceptCards({summary: {concepts}} as any)
+    }
+  }
+
+  /**
+   * 批次2：生成理解检验卡片 - 轻量级方法
+   */
+  private static async generateComprehensionCardsBatch(keyPoints: string[]): Promise<StudyCard[]> {
+    const systemPrompt = `你是理解检验专家。为关键知识点设计思考检验卡片。
+
+要求：
+1. 每个要点设计1个深度思考题
+2. 包含具体检验任务和自测标准  
+3. 避免"为什么重要"等空洞问题
+4. 返回JSON数组格式
+
+卡片格式：
+{
+  "id": "comprehension_X",
+  "type": "question",
+  "title": "理解检验：[检验主题]", 
+  "content": "🎯 思考挑战：[具体挑战]\\n\\n📝 检验任务：\\n• [任务1]\\n• [任务2]\\n\\n✅ 自测标准：[具体标准]",
+  "difficulty": "medium",
+  "estimatedTime": 8,
+  "timeReference": "全程"
+}`
+
+    const userPrompt = `关键要点：
+${keyPoints.map((point, i) => `${i+1}. ${point}`).join('\n')}
+
+请为每个要点设计1个思考检验卡片，返回JSON数组。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 1200,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw comprehension batch response:', content.substring(0, 150) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
+      }
+      
+      console.log(`✅ Batch generated ${cards.length} comprehension cards`)
+      return cards
+    } catch (error) {
+      console.error('Failed to generate comprehension cards batch:', error)
+      return this.generateFallbackComprehensionCards({summary: {keyPoints}} as any)
+    }
+  }
+
+  /**
+   * 批次3：生成记忆巩固卡片 - 轻量级方法  
+   */
+  private static async generateMemoryCardsBatch(concepts: any[]): Promise<StudyCard[]> {
+    const systemPrompt = `你是记忆技巧专家。为核心概念设计记忆巩固卡片。
+
+要求：
+1. 每个概念设计1张快速记忆卡片
+2. 包含记忆技巧、关键词提示、自测方法
+3. 内容具体实用，便于记忆
+4. 返回JSON数组格式
+
+卡片格式：
+{
+  "id": "memory_X",
+  "type": "concept",
+  "title": "快速记忆：[概念名]",
+  "content": "💡 核心记忆：[一句话定义]\\n\\n🎯 记忆技巧：\\n• 关键词：[2-3个词]\\n• 联想：[具体联想]\\n\\n✅ 快速自测：[检验方法]",
+  "difficulty": "easy", 
+  "estimatedTime": 3,
+  "timeReference": "全程"
+}`
+
+    const userPrompt = `概念：
+${concepts.map((c, i) => `${i+1}. ${c.name}：${c.explanation}`).join('\n')}
+
+请为每个概念设计1张记忆卡片，返回JSON数组。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1000,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw memory batch response:', content.substring(0, 150) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
+      }
+      
+      console.log(`✅ Batch generated ${cards.length} memory cards`)
+      return cards
+    } catch (error) {
+      console.error('Failed to generate memory cards batch:', error)
+      return this.generateFallbackMemoryCards({summary: {concepts}} as any)
+    }
+  }
+
+  /**
+   * 生成核心概念卡片 - 精准定义核心概念（原版方法保留）
+   */
+  private static async generateConceptCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const systemPrompt = `你是一个专业的学习卡片设计师。请为最重要的概念生成真正实用的学习卡片。
+
+核心要求：
+1. 严格禁止任何英文内容
+2. 每张卡片必须包含具体、实用的记忆提示
+3. 提供视频中的真实例子，不要编造
+4. 给出具体的记忆技巧和关联方法
+5. 避免空洞的模板化内容
+
+请返回JSON数组格式，每个卡片包含以下字段：
+- id: "concept_X" 
+- type: "concept"
+- title: "核心概念：[概念名称]"
+- content: 包含定义、特征、例子、记忆提示的完整内容
+- difficulty: "easy"或"medium"或"hard"
+- estimatedTime: 数字（分钟）
+- timeReference: "全程"
+
+重要：content字段必须包含具体实用的内容，避免"请自己总结"等空洞内容。`
+
+    const userPrompt = `视频标题：${learningMaterial.videoInfo.title}
+
+核心概念（从重要性排序）：
+${learningMaterial.summary.concepts.slice(0, 4).map((c, i) => `${i+1}. ${c.name}: ${c.explanation}`).join('\n')}
+
+关键要点：
+${learningMaterial.summary.keyPoints.slice(0, 3).join('\n')}
+
+请为最重要的3-4个概念生成简洁的学习卡片，返回JSON数组格式。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 2000,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw Gemini response:', content.substring(0, 200) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
+      }
+      
+      console.log(`✅ Generated ${cards.length} concept cards`)
+      return cards.slice(0, 4)
+    } catch (error) {
+      console.error('Failed to generate concept cards:', error)
+      console.log('Falling back to fallback method')
+      return this.generateFallbackConceptCards(learningMaterial)
+    }
   }
 
   /**
@@ -705,89 +926,200 @@ ${learningMaterial.summary.keyPoints.join('\n')}
   }
 
   /**
-   * 生成理解检验卡片
+   * 生成优化的理解检验卡片 - 开放式思考题
    */
-  private static async generateComprehensionCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
-    const cards: StudyCard[] = []
-    
-    // 从不同章节选择不同的要点，避免重复
-    const chapterPoints: string[] = []
-    learningMaterial.structuredContent.chapters.forEach(chapter => {
-      if (chapter.keyPoints && chapter.keyPoints.length > 0) {
-        // 取每个章节的第一个要点
-        chapterPoints.push(chapter.keyPoints[0])
+  private static async generateOptimizedComprehensionCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const systemPrompt = `你是理解检验专家。设计能真正检验用户理解深度的问题卡片。
+
+要求：
+1. 禁止英文内容
+2. 问题要有层次，从基础到深入
+3. 提供具体的思考框架和检验标准  
+4. 避免空洞的"为什么重要"等问题
+5. 要能引导用户主动思考和应用
+
+请返回JSON数组格式，每个卡片包含：
+- id: "comprehension_X"
+- type: "question" 
+- title: "理解检验：[具体方面]"
+- content: 包含核心挑战、检验任务、自测标准、思考引导的完整内容
+- difficulty: "medium"
+- estimatedTime: 数字（分钟）
+- timeReference: "全程"
+
+重要：content必须包含具体的检验任务和标准，避免空洞内容。`
+
+    const userPrompt = `基于以下关键要点设计2-3个理解检验卡片：
+
+关键要点：
+${learningMaterial.summary.keyPoints.slice(0, 3).join('\n')}
+
+核心概念：
+${learningMaterial.summary.concepts.slice(0, 3).map(c => `${c.name}: ${c.explanation}`).join('\n')}
+
+请设计能真正检验理解深度的问题，不要问"为什么重要"这种空洞问题。返回JSON数组格式。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 2000,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw comprehension response:', content.substring(0, 200) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
       }
-    })
-    
-    // 去重并选择前3个
-    const uniquePoints = Array.from(new Set(chapterPoints)).slice(0, 3)
-    
-    uniquePoints.forEach((keyPoint, index) => {
-      const shortPoint = keyPoint.length > 50 ? keyPoint.substring(0, 50) + '...' : keyPoint
-      cards.push({
-        id: `comprehension_${index + 1}`,
-        type: 'question',
-        title: `🤔 理解检验 ${index + 1}`,
-        content: `❓ 问题：请用自己的话解释"${shortPoint}"的含义和重要性。\n\n💭 思考要点：\n• 这个概念的核心是什么？\n• 它为什么重要？\n• 它与其他概念有什么关联？`,
-        relatedConcepts: [],
-        difficulty: 'medium',
-        estimatedTime: 8,
-        timeReference: '全程'
-      })
-    })
-    
-    return cards
-  }
-
-  /**
-   * 生成应用实践卡片
-   */
-  private static async generatePracticeCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
-    const cards: StudyCard[] = []
-    
-    const practiceTopics = learningMaterial.summary.keyPoints.filter(point => 
-      point.includes('应用') || point.includes('实践') || point.includes('方法') || point.includes('技术')
-    ).slice(0, 2)
-    
-    practiceTopics.forEach((topic, index) => {
-      cards.push({
-        id: `practice_${index + 1}`,
-        type: 'application',
-        title: `🛠️ 实践应用 ${index + 1}`,
-        content: `🎯 实践任务：基于"${topic}"的内容，请思考：\n\n📝 任务：\n• 如何在实际中应用这个知识？\n• 可以解决什么具体问题？\n• 需要注意哪些关键点？\n\n💡 提示：结合视频内容思考具体应用场景。`,
-        relatedConcepts: [],
-        difficulty: 'hard',
-        estimatedTime: 15,
-        timeReference: '全程'
-      })
-    })
-    
-    return cards
-  }
-
-  /**
-   * 生成记忆巩固卡片
-   */
-  private static async generateMemoryCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
-    const cards: StudyCard[] = []
-    
-    // 基于重要概念生成记忆卡片
-    if (learningMaterial.summary.concepts && learningMaterial.summary.concepts.length > 0) {
-      learningMaterial.summary.concepts.slice(0, 2).forEach((concept, index) => {
-        cards.push({
-          id: `memory_${index + 1}`,
-          type: 'concept',
-          title: `🧠 重点记忆：${concept.name}`,
-          content: `📚 定义：${concept.explanation}\n\n🔑 记忆要点：\n• 关键词：${concept.name}\n• 核心特征：请自己总结\n• 应用场景：请思考具体例子\n\n💭 自测：能否不看材料解释这个概念？`,
-          relatedConcepts: [],
-          difficulty: 'easy',
-          estimatedTime: 5,
-          timeReference: '全程'
-        })
-      })
+      
+      console.log(`✅ Generated ${cards.length} comprehension cards`)
+      return cards.slice(0, 3)
+    } catch (error) {
+      console.error('Failed to generate comprehension cards:', error)
+      console.log('Falling back to fallback method')
+      return this.generateFallbackComprehensionCards(learningMaterial)
     }
-    
-    return cards
+  }
+
+  /**
+   * 生成优化的应用实践卡片 - 实际应用场景
+   */
+  private static async generateOptimizedPracticeCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const systemPrompt = `你是实践应用设计专家。设计真正可操作的应用实践卡片。
+
+要求：
+1. 禁止英文内容
+2. 提供具体的应用场景和实施步骤
+3. 包含实际的工具、方法和注意事项
+4. 避免空洞的"结合实际思考"等建议
+5. 要有可衡量的成果和检验标准
+
+请返回JSON数组格式，每个卡片包含：
+- id: "practice_X"
+- type: "application"
+- title: "实践应用：[具体场景]"
+- content: 包含实际场景、实施步骤、关键要点、预期成果的完整内容
+- difficulty: "hard"
+- estimatedTime: 数字（分钟）
+- timeReference: "全程"
+
+重要：content必须包含具体可操作的步骤和检验标准，避免空洞建议。`
+
+    const userPrompt = `基于以下内容设计2个具体的实践应用卡片：
+
+视频标题：${learningMaterial.videoInfo.title}
+
+关键要点：
+${learningMaterial.summary.keyPoints.slice(0, 3).join('\n')}
+
+请设计真正可操作的实践方案，包含具体步骤、工具和检验标准。返回JSON数组格式。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.5,
+          maxOutputTokens: 2000,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw practice response:', content.substring(0, 200) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
+      }
+      
+      console.log(`✅ Generated ${cards.length} practice cards`)
+      return cards.slice(0, 2)
+    } catch (error) {
+      console.error('Failed to generate practice cards:', error)
+      console.log('Falling back to fallback method')
+      return this.generateFallbackPracticeCards(learningMaterial)
+    }
+  }
+
+  /**
+   * 生成优化的记忆巩固卡片 - 关键术语快速记忆
+   */
+  private static async generateOptimizedMemoryCards(learningMaterial: LearningMaterial): Promise<StudyCard[]> {
+    const systemPrompt = `你是记忆技巧专家。设计真正有效的记忆巩固卡片。
+
+要求：
+1. 禁止英文内容
+2. 提供具体的记忆技巧和联想方法
+3. 包含实用的记忆检验和练习
+4. 避免"请自己总结"等空洞指导
+5. 要有明确的记忆成功标准
+
+请返回JSON数组格式，每个卡片包含：
+- id: "memory_X"
+- type: "concept"
+- title: "快速记忆：[概念名]"
+- content: 包含核心记忆点、记忆技巧、快速练习、记忆检验的完整内容
+- difficulty: "easy"
+- estimatedTime: 数字（分钟）
+- timeReference: "全程"
+
+重要：content必须包含具体的记忆技巧和检验标准，避免空洞指导。`
+
+    const userPrompt = `基于以下概念设计2-3个记忆巩固卡片：
+
+核心概念：
+${learningMaterial.summary.concepts.slice(0, 3).map(c => `${c.name}: ${c.explanation}`).join('\n')}
+
+请设计实用的记忆技巧，包含具体的联想方法和快速检验标准。返回JSON数组格式。`
+
+    try {
+      const gemini = initGemini()
+      const model = gemini.getGenerativeModel({ 
+        model: API_CONFIG.GEMINI.MODEL,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1500,
+          responseMimeType: "application/json"
+        }
+      })
+      
+      const result = await model.generateContent([systemPrompt, userPrompt])
+      const response = await result.response
+      const content = response.text()
+
+      if (!content) throw new Error('Empty response from Gemini')
+
+      console.log('Raw memory response:', content.substring(0, 200) + '...')
+      
+      const cards = JSON.parse(content)
+      if (!Array.isArray(cards)) {
+        throw new Error('Response is not an array')
+      }
+      
+      console.log(`✅ Generated ${cards.length} memory cards`)
+      return cards.slice(0, 3)
+    } catch (error) {
+      console.error('Failed to generate memory cards:', error)
+      console.log('Falling back to fallback method')
+      return this.generateFallbackMemoryCards(learningMaterial)
+    }
   }
 
   /**
@@ -908,6 +1240,154 @@ ${learningMaterial.summary.keyPoints.join('\n')}
       difficulty: 'hard',
       estimatedTime: 15,
       timeReference: '全程'
+    })
+    
+    return cards
+  }
+
+  /**
+   * 降级处理：生成简单的概念卡片
+   */
+  private static generateFallbackConceptCards(learningMaterial: LearningMaterial): StudyCard[] {
+    const cards: StudyCard[] = []
+    
+    // 基于已有概念生成简单卡片
+    learningMaterial.summary.concepts.slice(0, 4).forEach((concept, index) => {
+      const conceptName = concept.name.split('(')[0].trim()
+      cards.push({
+        id: `concept_${index + 1}`,
+        type: 'concept',
+        title: `🧠 核心概念：${conceptName}`,
+        content: `📚 定义：${concept.explanation}\n\n💡 关键特征：\n• 这是视频中的重要概念\n• 理解这个概念有助于掌握整体内容\n\n🌟 学习建议：\n• 仔细理解定义\n• 思考实际应用场景`,
+        difficulty: 'medium',
+        estimatedTime: 5,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
+    })
+    
+    return cards
+  }
+
+  /**
+   * 优化的Mock学习卡片 - 用于API失败时的降级处理
+   */
+  private static generateOptimizedMockStudyCards(
+    knowledgeGraph: KnowledgeGraph, 
+    learningMaterial: LearningMaterial
+  ): StudyCard[] {
+    const cards: StudyCard[] = []
+    
+    // 1. 核心概念卡片
+    learningMaterial.summary.concepts.slice(0, 3).forEach((concept, index) => {
+      const conceptName = concept.name.split('(')[0].trim()
+      cards.push({
+        id: `concept_${index + 1}`,
+        type: 'concept',
+        title: `🧠 核心概念：${conceptName}`,
+        content: `📚 定义：${concept.explanation}\n\n💡 关键价值：\n• 理解这个概念的核心思想\n• 掌握其在实际中的应用\n\n🔗 关联：与其他概念相互关联，构成完整知识体系`,
+        difficulty: 'medium',
+        estimatedTime: 5,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
+    })
+    
+    // 2. 理解检验卡片
+    learningMaterial.summary.keyPoints.slice(0, 2).forEach((point, index) => {
+      const shortPoint = point.length > 60 ? point.substring(0, 60) + '...' : point
+      cards.push({
+        id: `comprehension_${index + 1}`,
+        type: 'question',
+        title: `🤔 理解检验 ${index + 1}`,
+        content: `❓ 思考题：请解释以下要点的含义和重要性\n\n"${shortPoint}"\n\n🎯 思考角度：\n• 核心概念是什么？\n• 为什么重要？\n• 如何应用？`,
+        difficulty: 'medium',
+        estimatedTime: 7,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
+    })
+    
+    // 3. 应用实践卡片
+    cards.push({
+      id: 'practice_1',
+      type: 'application',
+      title: '🛠️ 实践应用',
+      content: `🎯 应用挑战：结合视频内容，设计一个实际应用方案\n\n📝 任务：\n• 选择一个具体场景\n• 说明应用步骤\n• 预测挑战和解决方案\n\n💡 提示：可以结合工作或学习环境思考`,
+      difficulty: 'hard',
+      estimatedTime: 12,
+      timeReference: '全程',
+      relatedConcepts: []
+    })
+    
+    console.log(`✅ Generated ${cards.length} fallback study cards`)
+    return cards.slice(0, 8) // 控制总数
+  }
+
+  /**
+   * 降级处理：理解检验卡片
+   */
+  private static generateFallbackComprehensionCards(learningMaterial: LearningMaterial): StudyCard[] {
+    const cards: StudyCard[] = []
+    
+    learningMaterial.summary.keyPoints.slice(0, 2).forEach((point, index) => {
+      const shortPoint = point.length > 60 ? point.substring(0, 60) + '...' : point
+      cards.push({
+        id: `comprehension_${index + 1}`,
+        type: 'question',
+        title: `🤔 理解检验：核心要点 ${index + 1}`,
+        content: `🎯 **核心挑战：**\n请深度分析以下要点的内在逻辑\n\n📝 **要点内容：**\n"${shortPoint}"\n\n✅ **自测标准：**\n• 基础理解：能用自己的话重新表述\n• 深度理解：能解释其重要性和影响\n• 应用理解：能想出具体的应用场景\n\n💡 **思考引导：**\n试着从不同角度分析这个要点，思考它与其他概念的关联`,
+        difficulty: 'medium',
+        estimatedTime: 8,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
+    })
+    
+    return cards
+  }
+
+  /**
+   * 降级处理：应用实践卡片
+   */
+  private static generateFallbackPracticeCards(learningMaterial: LearningMaterial): StudyCard[] {
+    const cards: StudyCard[] = []
+    
+    const topPoints = learningMaterial.summary.keyPoints.slice(0, 2)
+    topPoints.forEach((point, index) => {
+      cards.push({
+        id: `practice_${index + 1}`,
+        type: 'application',
+        title: `🛠️ 实践应用：方案设计 ${index + 1}`,
+        content: `🎯 **实际场景：**\n基于"${point.substring(0, 80)}"设计一个实际应用方案\n\n📋 **实施步骤：**\n1. 分析应用场景和目标用户\n2. 制定具体的实施计划\n3. 确定需要的资源和工具\n4. 设计效果评估标准\n\n⚠️ **关键要点：**\n• 方案要具体可操作\n• 考虑实施中的挑战\n• 设定清晰的成功标准\n\n🎯 **预期成果：**\n完成一个可行的实施方案`,
+        difficulty: 'hard',
+        estimatedTime: 15,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
+    })
+    
+    return cards
+  }
+
+  /**
+   * 降级处理：记忆巩固卡片
+   */
+  private static generateFallbackMemoryCards(learningMaterial: LearningMaterial): StudyCard[] {
+    const cards: StudyCard[] = []
+    
+    learningMaterial.summary.concepts.slice(0, 3).forEach((concept, index) => {
+      const conceptName = concept.name.split('(')[0].trim()
+      cards.push({
+        id: `memory_${index + 1}`,
+        type: 'concept',
+        title: `🧠 快速记忆：${conceptName}`,
+        content: `💡 **核心记忆点：**\n${concept.explanation.substring(0, 80)}...\n\n🎯 **记忆技巧：**\n• **关键词：** ${conceptName}的核心特征\n• **类比记忆：** 联想到相似的概念或经历\n• **应用记忆：** 想象具体的使用场景\n\n✅ **记忆检验：**\n• 能快速说出核心定义\n• 能区分与相似概念的差异\n• 能举出实际应用例子`,
+        difficulty: 'easy',
+        estimatedTime: 3,
+        timeReference: '全程',
+        relatedConcepts: []
+      })
     })
     
     return cards

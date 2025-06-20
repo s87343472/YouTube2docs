@@ -86,23 +86,38 @@ export declare class KnowledgeGraphService {
     /**
      * 生成知识点精华卡片（详细学习笔记格式）
      */
-    private static generateEssentialCards;
+    /**
+     * 批次1：生成核心概念卡片 - 轻量级方法
+     */
+    private static generateConceptCardsBatch;
+    /**
+     * 批次2：生成理解检验卡片 - 轻量级方法
+     */
+    private static generateComprehensionCardsBatch;
+    /**
+     * 批次3：生成记忆巩固卡片 - 轻量级方法
+     */
+    private static generateMemoryCardsBatch;
+    /**
+     * 生成核心概念卡片 - 精准定义核心概念（原版方法保留）
+     */
+    private static generateConceptCards;
     /**
      * 生成详细的图文学习笔记内容
      */
     private static generateDetailedNoteContent;
     /**
-     * 生成理解检验卡片
+     * 生成优化的理解检验卡片 - 开放式思考题
      */
-    private static generateComprehensionCards;
+    private static generateOptimizedComprehensionCards;
     /**
-     * 生成应用实践卡片
+     * 生成优化的应用实践卡片 - 实际应用场景
      */
-    private static generatePracticeCards;
+    private static generateOptimizedPracticeCards;
     /**
-     * 生成记忆巩固卡片
+     * 生成优化的记忆巩固卡片 - 关键术语快速记忆
      */
-    private static generateMemoryCards;
+    private static generateOptimizedMemoryCards;
     /**
      * 生成概念解释（基于概念名称和章节内容）
      */
@@ -111,5 +126,25 @@ export declare class KnowledgeGraphService {
      * 生成增强版模拟学习卡片
      */
     private static generateEnhancedMockStudyCards;
+    /**
+     * 降级处理：生成简单的概念卡片
+     */
+    private static generateFallbackConceptCards;
+    /**
+     * 优化的Mock学习卡片 - 用于API失败时的降级处理
+     */
+    private static generateOptimizedMockStudyCards;
+    /**
+     * 降级处理：理解检验卡片
+     */
+    private static generateFallbackComprehensionCards;
+    /**
+     * 降级处理：应用实践卡片
+     */
+    private static generateFallbackPracticeCards;
+    /**
+     * 降级处理：记忆巩固卡片
+     */
+    private static generateFallbackMemoryCards;
 }
 //# sourceMappingURL=knowledgeGraphService.d.ts.map
