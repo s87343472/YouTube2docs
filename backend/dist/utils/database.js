@@ -143,7 +143,7 @@ class DatabaseManager {
           COUNT(*) FILTER (WHERE plan = 'free') as free_users,
           COUNT(*) FILTER (WHERE plan = 'basic') as basic_users,
           COUNT(*) FILTER (WHERE plan = 'pro') as pro_users,
-          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as new_users_today
+          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE) as new_users_today
         FROM users
       `);
             stats.users = userStats[0];
@@ -154,7 +154,7 @@ class DatabaseManager {
           COUNT(*) FILTER (WHERE status = 'completed') as completed,
           COUNT(*) FILTER (WHERE status = 'failed') as failed,
           COUNT(*) FILTER (WHERE status = 'processing') as processing,
-          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today_processes,
+          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE) as today_processes,
           AVG(processing_time) as avg_processing_time
         FROM video_processes
       `);
@@ -172,6 +172,49 @@ class DatabaseManager {
         }
         catch (error) {
             throw new Error(`Stats query failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    /**
+     * 检查Redis是否可用
+     */
+    static isRedisAvailable() {
+        try {
+            return database_1.redis.status === 'ready' || database_1.redis.status === 'connecting' || database_1.redis.status === 'connect';
+        }
+        catch (error) {
+            return false;
+        }
+    }
+    /**
+     * 获取Redis连接
+     */
+    static async getRedisConnection() {
+        if (!this.isRedisAvailable()) {
+            throw new Error('Redis connection is not available');
+        }
+        return database_1.redis;
+    }
+    /**
+     * Redis健康检查
+     */
+    static async redisHealthCheck() {
+        try {
+            const start = Date.now();
+            await database_1.redis.ping();
+            const duration = Date.now() - start;
+            return {
+                status: 'healthy',
+                response_time: duration,
+                connection_status: database_1.redis.status,
+                memory_usage: await database_1.redis.memory('usage').catch(() => 'unknown')
+            };
+        }
+        catch (error) {
+            return {
+                status: 'unhealthy',
+                error: error instanceof Error ? error.message : String(error),
+                connection_status: database_1.redis.status
+            };
         }
     }
 }

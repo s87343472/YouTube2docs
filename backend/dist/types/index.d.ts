@@ -5,8 +5,8 @@ export interface User {
     plan: 'free' | 'basic' | 'pro' | 'enterprise';
     monthly_quota: number;
     used_quota: number;
-    created_at: Date;
-    updated_at: Date;
+    createdAt: Date;
+    updatedAt: Date;
 }
 export interface VideoProcess {
     id: string;
@@ -20,8 +20,8 @@ export interface VideoProcess {
     result_data?: LearningMaterial;
     error_message?: string;
     processing_time?: number;
-    created_at: Date;
-    updated_at: Date;
+    createdAt: Date;
+    updatedAt: Date;
 }
 export interface LearningMaterial {
     videoInfo: VideoInfo;
@@ -137,10 +137,14 @@ export interface VideoStatusResponse {
 }
 export interface VideoResultResponse {
     processId: string;
-    status: 'completed';
-    result: LearningMaterial;
-    processingTime: number;
-    downloadUrls: {
+    status: VideoProcess['status'];
+    result?: LearningMaterial;
+    processingTime?: number;
+    progress?: number;
+    currentStep?: string;
+    error?: string;
+    message?: string;
+    downloadUrls?: {
         pdf?: string;
         markdown?: string;
         json?: string;
@@ -173,6 +177,45 @@ export interface TranscriptionSegment {
     end: number;
     text: string;
     confidence: number;
+}
+export interface SharedContent {
+    id: string;
+    shareId: string;
+    userId: string;
+    videoInfo: VideoInfo;
+    learningMaterial: LearningMaterial;
+    isPublic: boolean;
+    createdAt: string;
+    updatedAt: string;
+    viewCount: number;
+    likeCount: number;
+    title: string;
+    description?: string;
+    tags: string[];
+}
+export interface SharedContentView {
+    id: string;
+    shareId: string;
+    viewerIP: string;
+    viewerUserAgent: string;
+    referrer?: string;
+    viewedAt: string;
+    source: 'home' | 'profile' | 'social' | 'search' | 'direct';
+}
+export interface SharedContentAnalytics {
+    shareId: string;
+    totalViews: number;
+    uniqueViews: number;
+    dailyViews: {
+        date: string;
+        views: number;
+    }[];
+    topReferrers: {
+        source: string;
+        count: number;
+    }[];
+    averageViewTime: number;
+    lastViewedAt: string;
 }
 export interface APIError {
     code: string;

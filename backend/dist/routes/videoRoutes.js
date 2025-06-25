@@ -43,6 +43,7 @@ async function videoRoutes(fastify) {
      * 提交视频处理请求
      */
     fastify.post('/videos/process', {
+        preHandler: [], // 暂时不要求认证，但可以提取用户信息
         schema: {
             body: {
                 type: 'object',
@@ -92,9 +93,9 @@ async function videoRoutes(fastify) {
     }, async (request, reply) => {
         try {
             console.log('📥 Received video processing request:', request.body.youtubeUrl);
-            // 这里可以添加用户认证逻辑
-            // const userId = request.user?.id
-            const result = await videoProcessor_1.VideoProcessor.processVideo(request.body);
+            // 提取用户ID（如果用户已登录）
+            const userId = request.user?.id || 1; // 临时硬编码为用户1，实际部署时改为从认证中获取
+            const result = await videoProcessor_1.VideoProcessor.processVideo(request.body, Number(userId));
             reply.code(200).send(result);
         }
         catch (error) {
@@ -383,7 +384,7 @@ async function videoRoutes(fastify) {
 /**
  * 将 Markdown 格式转换为 HTML
  */
-function convertMarkdownToHTML(text) {
+function convertMarkdownToHtml(text) {
     if (!text || typeof text !== 'string') {
         return text || '';
     }
@@ -587,15 +588,15 @@ function generateHTMLContent(material) {
     
     <h3>🎯 核心要点</h3>
     <ul class="key-points">
-        ${summary.keyPoints.map((point) => `<li>${convertMarkdownToHTML(point)}</li>`).join('')}
+        ${summary.keyPoints.map((point) => `<li>${convertMarkdownToHtml(point)}</li>`).join('')}
     </ul>
     
     ${summary.concepts && summary.concepts.length > 0 ? `
     <h3>💡 核心概念</h3>
     ${summary.concepts.map((concept) => `
         <div class="concept">
-            <h4>${convertMarkdownToHTML(concept.name)}</h4>
-            <p>${convertMarkdownToHTML(concept.explanation)}</p>
+            <h4>${convertMarkdownToHtml(concept.name)}</h4>
+            <p>${convertMarkdownToHtml(concept.explanation)}</p>
         </div>
     `).join('')}
     ` : ''}
@@ -610,14 +611,14 @@ function generateHTMLContent(material) {
             ${chapter.detailedExplanation ? `
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">📚 详细解释</h4>
-                    <div style="line-height: 1.6;">${convertMarkdownToHTML(chapter.detailedExplanation)}</div>
+                    <div style="line-height: 1.6;">${convertMarkdownToHtml(chapter.detailedExplanation)}</div>
                 </div>
             ` : ''}
             
             ${chapter.keyPoints && chapter.keyPoints.length > 0 ? `
                 <p><strong>🎯 核心要点:</strong></p>
                 <ul class="key-points">
-                    ${chapter.keyPoints.map((point) => `<li>${convertMarkdownToHTML(point)}</li>`).join('')}
+                    ${chapter.keyPoints.map((point) => `<li>${convertMarkdownToHtml(point)}</li>`).join('')}
                 </ul>
             ` : ''}
             
@@ -625,7 +626,7 @@ function generateHTMLContent(material) {
                 <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">💡 具体例子</h4>
                     <ul style="margin: 0; padding-left: 20px;">
-                        ${chapter.examples.map((example) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHTML(example)}</li>`).join('')}
+                        ${chapter.examples.map((example) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHtml(example)}</li>`).join('')}
                     </ul>
                 </div>
             ` : ''}
@@ -634,7 +635,7 @@ function generateHTMLContent(material) {
                 <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #17a2b8;">
                     <h4 style="margin: 0 0 10px 0; color: #2c3e50;">🛠️ 实际应用</h4>
                     <ul style="margin: 0; padding-left: 20px;">
-                        ${chapter.practicalApplications.map((app) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHTML(app)}</li>`).join('')}
+                        ${chapter.practicalApplications.map((app) => `<li style="margin: 10px 0; line-height: 1.6;">${convertMarkdownToHtml(app)}</li>`).join('')}
                     </ul>
                 </div>
             ` : ''}
@@ -694,7 +695,7 @@ function generateHTMLContent(material) {
             </div>
             
             <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; line-height: 1.7;">
-                ${convertMarkdownToHTML(cardContent)}
+                ${convertMarkdownToHtml(cardContent)}
             </div>
             
             ${answerSection}

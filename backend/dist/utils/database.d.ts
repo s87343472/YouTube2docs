@@ -35,5 +35,29 @@ export declare class DatabaseManager {
      * 获取数据库统计信息
      */
     static getStats(): Promise<any>;
+    /**
+     * 检查Redis是否可用
+     */
+    static isRedisAvailable(): boolean;
+    /**
+     * 获取Redis连接
+     */
+    static getRedisConnection(): Promise<import("ioredis").default>;
+    /**
+     * Redis健康检查
+     */
+    static redisHealthCheck(): Promise<{
+        status: string;
+        response_time: number;
+        connection_status: "close" | "connect" | "wait" | "reconnecting" | "connecting" | "ready" | "end";
+        memory_usage: string;
+        error?: undefined;
+    } | {
+        status: string;
+        error: string;
+        connection_status: "close" | "connect" | "wait" | "reconnecting" | "connecting" | "ready" | "end";
+        response_time?: undefined;
+        memory_usage?: undefined;
+    }>;
 }
 //# sourceMappingURL=database.d.ts.map

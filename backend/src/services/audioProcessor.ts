@@ -14,7 +14,7 @@ const execAsync = promisify(exec)
 export class AudioProcessor {
   private static readonly TEMP_DIR = path.join(process.cwd(), 'temp')
   private static readonly MAX_DURATION = 7200 // 2小时
-  private static readonly MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB (Groq API limit)
+  private static readonly MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB (increased limit)
 
   /**
    * 确保临时目录存在
@@ -65,14 +65,15 @@ export class AudioProcessor {
     const outputPath = path.join(this.TEMP_DIR, `${videoId}.%(ext)s`)
     
     try {
-      // yt-dlp命令参数
+      // yt-dlp命令参数 - 优化为质量平衡
       const args = [
         '--extract-audio',
         '--audio-format', 'mp3',
-        '--audio-quality', '96K', // 平衡质量和文件大小
+        '--audio-quality', '64K', // 降低质量减小文件大小
         '--no-playlist',
         '--max-filesize', `${this.MAX_FILE_SIZE}`,
         '--match-filter', `duration < ${this.MAX_DURATION}`,
+        '--postprocessor-args', 'ffmpeg:-ar 16000 -ac 1', // 直接在提取时优化
         '-o', outputPath,
         youtubeUrl
       ]
@@ -81,10 +82,16 @@ export class AudioProcessor {
       
       const result = await this.executeYtDlp(args)
       
+      // 等待文件处理完成
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
       // 查找生成的音频文件
       const audioFile = await this.findAudioFile(videoId)
       
       if (!audioFile) {
+        // 尝试列出临时目录中的文件进行调试
+        const files = await fs.readdir(this.TEMP_DIR).catch(() => [])
+        console.log(`🔍 Available files in temp dir: ${files.join(', ')}`)
         throw new Error('Audio file not found after extraction')
       }
 

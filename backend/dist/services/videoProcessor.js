@@ -147,14 +147,33 @@ class VideoProcessor {
           status, 
           result_data, 
           processing_time,
-          created_at
+          progress,
+          current_step,
+          error_message,
+          "createdAt"
         FROM video_processes 
-        WHERE id = $1 AND status = 'completed'
+        WHERE id = $1
       `, [processId]);
             if (result.rows.length === 0) {
-                throw new Error('Completed process not found');
+                throw new Error('Process not found');
             }
             const process = result.rows[0];
+            // 如果处理未完成，返回状态信息而不是结果数据
+            if (process.status !== 'completed') {
+                return {
+                    processId,
+                    status: process.status,
+                    progress: process.progress || 0,
+                    currentStep: process.current_step,
+                    error: process.error_message,
+                    message: process.status === 'processing'
+                        ? '处理中，请稍后查看结果'
+                        : process.status === 'failed'
+                            ? '处理失败'
+                            : '处理未开始'
+                };
+            }
+            // 只有完成的任务才返回完整结果数据
             return {
                 processId,
                 status: 'completed',
@@ -180,10 +199,10 @@ class VideoProcessor {
             const result = await database_1.pool.query(`
         SELECT 
           id, youtube_url, video_title, channel_name, 
-          status, progress, created_at, processing_time
+          status, progress, "createdAt", processing_time
         FROM video_processes 
         WHERE user_id = $1 
-        ORDER BY created_at DESC 
+        ORDER BY "createdAt" DESC 
         LIMIT $2
       `, [userId, limit]);
             return result.rows;
@@ -199,7 +218,7 @@ class VideoProcessor {
     static async createProcessRecord(processId, youtubeUrl, userId) {
         await database_1.pool.query(`
       INSERT INTO video_processes (
-        id, user_id, youtube_url, status, progress, created_at
+        id, user_id, youtube_url, status, progress, "createdAt"
       ) VALUES ($1, $2, $3, 'pending', 0, CURRENT_TIMESTAMP)
     `, [processId, userId || null, youtubeUrl]);
     }
@@ -209,10 +228,10 @@ class VideoProcessor {
     static async updateProcessStatus(processId, status, progress, currentStep, errorMessage) {
         const query = errorMessage
             ? `UPDATE video_processes 
-         SET status = $2, progress = $3, current_step = $4, error_message = $5, updated_at = CURRENT_TIMESTAMP 
+         SET status = $2, progress = $3, current_step = $4, error_message = $5, "updatedAt" = CURRENT_TIMESTAMP 
          WHERE id = $1`
             : `UPDATE video_processes 
-         SET status = $2, progress = $3, current_step = $4, updated_at = CURRENT_TIMESTAMP 
+         SET status = $2, progress = $3, current_step = $4, "updatedAt" = CURRENT_TIMESTAMP 
          WHERE id = $1`;
         const params = errorMessage
             ? [processId, status, progress, currentStep, errorMessage]
@@ -248,7 +267,7 @@ class VideoProcessor {
         channel_name = $4,
         duration = $5,
         result_data = $6,
-        updated_at = CURRENT_TIMESTAMP
+        "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = $1
     `, [
             processId,
@@ -280,7 +299,7 @@ class VideoProcessor {
           COUNT(*) FILTER (WHERE status = 'completed') as completed_processes,
           COUNT(*) FILTER (WHERE status = 'failed') as failed_processes,
           AVG(processing_time) FILTER (WHERE processing_time IS NOT NULL) as avg_processing_time,
-          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today_processes
+          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE) as today_processes
         FROM video_processes
       `);
             const stats = result.rows[0];
@@ -310,7 +329,7 @@ class VideoProcessor {
         try {
             const result = await database_1.pool.query(`
         DELETE FROM video_processes 
-        WHERE created_at < CURRENT_DATE - INTERVAL '${daysOld} days'
+        WHERE "createdAt" < CURRENT_DATE - INTERVAL '${daysOld} days'
         AND status IN ('completed', 'failed')
       `);
             const deletedCount = result.rowCount || 0;
