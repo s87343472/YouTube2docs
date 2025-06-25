@@ -1,9 +1,16 @@
 import { Link } from 'react-router-dom'
-import { Play, Menu, X } from 'lucide-react'
+import { Play, Menu, X, User, LogOut } from 'lucide-react'
 import { useState } from 'react'
+import { useAuth } from '../AuthProvider'
+import { authClient } from '../../lib/auth-client'
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { isLoggedIn, user } = useAuth()
+
+  const handleSignOut = async () => {
+    await authClient.signOut()
+  }
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -39,6 +46,32 @@ export const Header = () => {
             >
               API测试
             </Link>
+            {isLoggedIn ? (
+              <div className="flex items-center space-x-4">
+                <Link 
+                  to="/user-center" 
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors flex items-center"
+                >
+                  <User className="h-4 w-4 mr-1" />
+                  {user?.name || '个人中心'}
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors flex items-center"
+                >
+                  <LogOut className="h-4 w-4 mr-1" />
+                  登出
+                </button>
+              </div>
+            ) : (
+              <Link 
+                to="/login" 
+                className="text-gray-600 hover:text-gray-900 font-medium transition-colors flex items-center"
+              >
+                <User className="h-4 w-4 mr-1" />
+                登录
+              </Link>
+            )}
             <Link 
               to="/process-demo" 
               className="btn-primary text-white hover:text-white no-underline"
@@ -83,6 +116,37 @@ export const Header = () => {
               >
                 API测试
               </Link>
+              {isLoggedIn ? (
+                <>
+                  <Link
+                    to="/user-center"
+                    className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium flex items-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <User className="h-4 w-4 mr-1" />
+                    {user?.name || '个人中心'}
+                  </Link>
+                  <button
+                    onClick={() => {
+                      handleSignOut()
+                      setIsMenuOpen(false)
+                    }}
+                    className="block w-full text-left px-3 py-2 text-gray-600 hover:text-gray-900 font-medium flex items-center"
+                  >
+                    <LogOut className="h-4 w-4 mr-1" />
+                    登出
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium flex items-center"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <User className="h-4 w-4 mr-1" />
+                  登录
+                </Link>
+              )}
               <div className="px-3 py-2">
                 <Link to="/process-demo" className="btn-primary w-full block text-center text-white hover:text-white no-underline">
                   立即体验

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { VideoAPI, APIUtils } from '../services/api'
 import { 
   Play, 
   Zap, 
@@ -15,12 +16,37 @@ import {
 
 export const HomePage = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const navigate = useNavigate()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (youtubeUrl.trim()) {
-      // TODO: 处理视频URL提交
-      console.log('Processing URL:', youtubeUrl)
+    if (!youtubeUrl.trim()) return
+    
+    if (!APIUtils.isValidYouTubeURL(youtubeUrl)) {
+      alert('请输入有效的YouTube视频链接')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      // 直接提交处理请求获取processId
+      const response = await VideoAPI.processVideo({
+        youtubeUrl: youtubeUrl.trim(),
+        options: {
+          language: 'zh',
+          outputFormat: 'standard',
+          includeTimestamps: true
+        }
+      })
+
+      // 跳转到处理ID页面
+      navigate(`/process/${response.processId}`)
+    } catch (error) {
+      console.error('Processing submission failed:', error)
+      alert(`提交失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -33,7 +59,7 @@ export const HomePage = () => {
           <div className="text-center">
             <div className="inline-flex items-center bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-8">
               <Sparkles className="h-4 w-4 mr-2" />
-              基于Groq技术，216x实时速度处理
+              AI智能分析，2分钟生成完整学习资料
             </div>
             
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
@@ -62,29 +88,32 @@ export const HomePage = () => {
                 />
                 <button
                   type="submit"
-                  className="absolute inset-y-0 right-0 mr-2 px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105"
+                  disabled={isSubmitting || !youtubeUrl.trim()}
+                  className="absolute inset-y-0 right-0 mr-2 px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  立即生成
-                  <ArrowRight className="h-4 w-4 ml-2 inline" />
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
+                      提交中...
+                    </>
+                  ) : (
+                    <>
+                      立即生成
+                      <ArrowRight className="h-4 w-4 ml-2 inline" />
+                    </>
+                  )}
                 </button>
               </div>
             </form>
 
-            {/* Demo Video Examples */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-              {[
-                { title: 'React Hooks教程', duration: '25:30', views: '1.2M' },
-                { title: 'Python数据分析', duration: '45:15', views: '856K' },
-                { title: 'UI设计原则', duration: '18:45', views: '634K' }
-              ].map((example, index) => (
-                <div key={index} className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow">
-                  <div className="bg-gray-200 rounded-lg h-24 mb-3 flex items-center justify-center">
-                    <Play className="h-8 w-8 text-gray-400" />
-                  </div>
-                  <h3 className="font-medium text-gray-900 mb-1">{example.title}</h3>
-                  <p className="text-sm text-gray-500">{example.duration} • {example.views} 观看</p>
-                </div>
-              ))}
+            {/* Demo Instructions */}
+            <div className="text-center text-gray-600 max-w-2xl mx-auto">
+              <p className="mb-2">💡 提示：支持YouTube视频链接，包括：</p>
+              <div className="text-sm space-y-1">
+                <p>• https://www.youtube.com/watch?v=...</p>
+                <p>• https://youtu.be/...</p>
+                <p>• https://www.youtube.com/embed/...</p>
+              </div>
             </div>
           </div>
         </div>
@@ -107,7 +136,7 @@ export const HomePage = () => {
               {
                 icon: Zap,
                 title: '极速生成',
-                description: '2分钟完成处理，比其他工具快10倍。基于Groq技术，216x实时速度',
+                description: '2分钟完成处理，比其他工具快10倍。AI智能分析，超快处理速度',
                 color: 'text-yellow-600 bg-yellow-100'
               },
               {
@@ -306,7 +335,7 @@ export const HomePage = () => {
             免费体验，每月3个视频额度，无需注册
           </p>
           <Link
-            to="/"
+            to="/process-demo"
             className="inline-flex items-center bg-white text-blue-600 font-semibold py-4 px-8 rounded-lg hover:bg-blue-50 transition-all duration-300 transform hover:scale-105 shadow-lg"
           >
             立即开始免费体验
