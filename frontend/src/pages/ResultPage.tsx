@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { useState, useCallback } from 'react'
 import { 
   Download, 
   Share2, 
@@ -13,9 +14,186 @@ import {
   Network,
   CheckSquare
 } from 'lucide-react'
+import KnowledgeGraphVisualization from '../components/KnowledgeGraphVisualization'
+import { conceptExplanationService } from '../services/conceptExplanationService'
+import { ShareModal } from '../components/ShareModal'
 
 export const ResultPage = () => {
   const { id } = useParams()
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null)
+  const [showShareModal, setShowShareModal] = useState(false)
+
+  // 知识图谱数据
+  const knowledgeGraphData = {
+    nodes: [
+      { 
+        id: 'react-hooks', 
+        name: 'React Hooks', 
+        type: 'concept' as const, 
+        importance: 10,
+        explanation: 'React Hooks是函数组件中使用状态和生命周期的方式，让函数组件具备类组件的功能。'
+      },
+      { 
+        id: 'usestate', 
+        name: 'useState', 
+        type: 'concept' as const, 
+        importance: 9,
+        explanation: '状态Hook，用于在函数组件中添加和管理状态。'
+      },
+      { 
+        id: 'useeffect', 
+        name: 'useEffect', 
+        type: 'concept' as const, 
+        importance: 9,
+        explanation: '副作用Hook，用于处理副作用操作如API调用、订阅、DOM操作等。'
+      },
+      { 
+        id: 'usecontext', 
+        name: 'useContext', 
+        type: 'concept' as const, 
+        importance: 7,
+        explanation: '上下文Hook，用于消费React Context，避免props drilling。'
+      },
+      { 
+        id: 'custom-hooks', 
+        name: '自定义Hook', 
+        type: 'concept' as const, 
+        importance: 8,
+        explanation: '可复用的状态逻辑封装，以use开头的函数，可以调用其他Hook。'
+      },
+      { 
+        id: 'state-management', 
+        name: '状态管理', 
+        type: 'subtopic' as const, 
+        importance: 6
+      },
+      { 
+        id: 'lifecycle', 
+        name: '生命周期', 
+        type: 'subtopic' as const, 
+        importance: 6
+      },
+      { 
+        id: 'react-context', 
+        name: 'React Context', 
+        type: 'resource' as const, 
+        importance: 5
+      },
+      { 
+        id: 'functional-components', 
+        name: '函数组件', 
+        type: 'subtopic' as const, 
+        importance: 7
+      }
+    ],
+    links: [
+      { source: 'react-hooks', target: 'usestate', type: 'part_of' as const, strength: 3 },
+      { source: 'react-hooks', target: 'useeffect', type: 'part_of' as const, strength: 3 },
+      { source: 'react-hooks', target: 'usecontext', type: 'part_of' as const, strength: 2 },
+      { source: 'react-hooks', target: 'custom-hooks', type: 'related_to' as const, strength: 2 },
+      { source: 'usestate', target: 'state-management', type: 'related_to' as const, strength: 2 },
+      { source: 'useeffect', target: 'lifecycle', type: 'related_to' as const, strength: 2 },
+      { source: 'usecontext', target: 'react-context', type: 'depends_on' as const, strength: 3 },
+      { source: 'react-hooks', target: 'functional-components', type: 'related_to' as const, strength: 2 },
+      { source: 'custom-hooks', target: 'usestate', type: 'related_to' as const, strength: 1 },
+      { source: 'custom-hooks', target: 'useeffect', type: 'related_to' as const, strength: 1 }
+    ]
+  }
+
+  // 处理概念点击
+  const handleConceptClick = useCallback((node: any) => {
+    console.log('Concept clicked:', node.name)
+    setSelectedConcept(node.name)
+  }, [])
+
+  // 请求AI解释
+  const handleRequestExplanation = useCallback(async (concept: string): Promise<string> => {
+    try {
+      const explanation = await conceptExplanationService.getConceptExplanation(
+        concept,
+        'React Hooks教程的上下文'
+      )
+      return explanation
+    } catch (error) {
+      console.error('Failed to get explanation:', error)
+      return '抱歉，无法获取该概念的详细解释。请稍后重试。'
+    }
+  }, [])
+
+  // 处理分享
+  const handleShare = useCallback(async (shareData: any) => {
+    try {
+      const response = await fetch('/api/shares', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          videoProcessId: id,
+          ...shareData
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        return {
+          shareId: result.data.shareId,
+          shareUrl: result.data.shareUrl
+        }
+      } else {
+        throw new Error(result.error?.message || '分享创建失败')
+      }
+    } catch (error) {
+      console.error('Share creation failed:', error)
+      throw error
+    }
+  }, [id])
+
+  // 处理PDF导出
+  const handleExportPDF = useCallback(async (type: 'complete' | 'cards') => {
+    try {
+      const endpoint = type === 'complete' 
+        ? '/api/export/learning-material' 
+        : '/api/export/study-cards'
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          videoProcessId: id || 'demo-123',
+          format: 'pdf',
+          options: {
+            theme: 'light',
+            includeGraphs: true,
+            includeCards: type === 'complete',
+            watermark: '由YouTube智学生成'
+          }
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // 创建下载链接
+        const link = document.createElement('a')
+        link.href = result.data.downloadUrl
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        console.log('PDF export successful:', result.data)
+      } else {
+        alert('导出失败：' + (result.error?.message || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('导出失败，请稍后重试')
+    }
+  }, [id])
 
   // 模拟数据
   const mockResult = {
@@ -112,11 +290,17 @@ export const ResultPage = () => {
                 <span>{mockResult.videoInfo.channel}</span>
               </div>
               <div className="flex items-center space-x-3">
-                <button className="btn-primary flex items-center">
+                <button 
+                  onClick={() => handleExportPDF('complete')}
+                  className="btn-primary flex items-center"
+                >
                   <Download className="h-4 w-4 mr-2" />
                   下载学习资料
                 </button>
-                <button className="btn-secondary flex items-center">
+                <button 
+                  onClick={() => setShowShareModal(true)}
+                  className="btn-secondary flex items-center"
+                >
                   <Share2 className="h-4 w-4 mr-2" />
                   分享
                 </button>
@@ -183,18 +367,38 @@ export const ResultPage = () => {
 
             {/* 知识图谱 */}
             <div className="card">
-              <div className="flex items-center mb-6">
-                <Network className="h-5 w-5 text-purple-600 mr-2" />
-                <h2 className="text-xl font-semibold text-gray-900">知识图谱</h2>
-              </div>
-              <div className="bg-gray-100 rounded-lg h-96 flex items-center justify-center">
-                <div className="text-center">
-                  <Network className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">交互式知识图谱</p>
-                  <p className="text-sm text-gray-500">
-                    点击概念节点查看详细解释和相关链接
-                  </p>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <Network className="h-5 w-5 text-purple-600 mr-2" />
+                  <h2 className="text-xl font-semibold text-gray-900">交互式知识图谱</h2>
                 </div>
+                <div className="text-sm text-gray-500">
+                  点击节点查看AI解释
+                </div>
+              </div>
+              
+              {/* 知识图谱可视化 */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <KnowledgeGraphVisualization
+                  graphData={knowledgeGraphData}
+                  onNodeClick={handleConceptClick}
+                  onRequestExplanation={handleRequestExplanation}
+                  height={500}
+                  width={undefined} // 自适应宽度
+                  className="w-full"
+                />
+              </div>
+              
+              {/* 图谱说明 */}
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">如何使用知识图谱：</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• <strong>拖拽节点</strong>：重新排列图谱布局</li>
+                  <li>• <strong>滚轮缩放</strong>：放大或缩小视图</li>
+                  <li>• <strong>点击节点</strong>：查看概念的详细AI解释</li>
+                  <li>• <strong>悬停节点</strong>：查看概念类型和重要度</li>
+                  <li>• <strong>连线颜色</strong>：红色=依赖关系，紫色=相关关系，青色=包含关系</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -237,7 +441,10 @@ export const ResultPage = () => {
             <div className="card">
               <h3 className="font-semibold text-gray-900 mb-4">下载选项</h3>
               <div className="space-y-3">
-                <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <button 
+                  onClick={() => handleExportPDF('complete')}
+                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-center">
                     <FileText className="h-5 w-5 text-red-600 mr-3" />
                     <span className="font-medium">PDF格式</span>
@@ -251,7 +458,10 @@ export const ResultPage = () => {
                   </div>
                   <Download className="h-4 w-4 text-gray-400" />
                 </button>
-                <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <button 
+                  onClick={() => handleExportPDF('cards')}
+                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-center">
                     <Image className="h-5 w-5 text-green-600 mr-3" />
                     <span className="font-medium">学习卡片</span>
@@ -269,7 +479,10 @@ export const ResultPage = () => {
                   <Bookmark className="h-4 w-4 mr-2" />
                   收藏资料
                 </button>
-                <button className="w-full btn-secondary flex items-center justify-center">
+                <button 
+                  onClick={() => setShowShareModal(true)}
+                  className="w-full btn-secondary flex items-center justify-center"
+                >
                   <Share2 className="h-4 w-4 mr-2" />
                   分享给朋友
                 </button>
@@ -278,6 +491,15 @@ export const ResultPage = () => {
           </div>
         </div>
       </div>
+      
+      {/* 分享模态框 */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        videoTitle={mockResult.videoInfo.title}
+        videoProcessId={id || 'demo-123'}
+        onShare={handleShare}
+      />
     </div>
   )
 }

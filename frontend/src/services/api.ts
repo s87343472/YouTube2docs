@@ -1,10 +1,10 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios'
+import axios from 'axios'
 
 // API配置
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
 
 // 创建axios实例
-const api: AxiosInstance = axios.create({
+const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   timeout: 30000, // 30秒超时
   headers: {
@@ -26,7 +26,7 @@ api.interceptors.request.use(
 
 // 响应拦截器
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
+  (response) => {
     console.log(`✅ API Response: ${response.status} ${response.config.url}`)
     return response
   },
@@ -110,7 +110,6 @@ export interface VideoResultResponse {
   downloadUrls: {
     pdf?: string
     markdown?: string
-    json?: string
   }
 }
 

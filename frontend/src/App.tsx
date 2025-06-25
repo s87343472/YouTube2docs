@@ -6,21 +6,31 @@ import { ResultPage } from './pages/ResultPage'
 import { AboutPage } from './pages/AboutPage'
 import { APITestPage } from './pages/APITestPage'
 import { ProcessDemoPage } from './pages/ProcessDemoPage'
+import { UserCenterPage } from './pages/UserCenterPage'
+import { SharedContentPage } from './pages/SharedContentPage'
+import { LoginPage } from './pages/LoginPage'
+import { AuthProvider } from './components/AuthProvider'
 
 function App() {
   return (
-    <Router>
-      <Layout>
-        <Routes>
+    <AuthProvider>
+      <Router>
+        <Layout>
+          <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/process" element={<ProcessPage />} />
           <Route path="/process-demo" element={<ProcessDemoPage />} />
+          <Route path="/process/:id" element={<ProcessDemoPage />} />
           <Route path="/result/:id" element={<ResultPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/api-test" element={<APITestPage />} />
-        </Routes>
-      </Layout>
-    </Router>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/user-center" element={<UserCenterPage />} />
+          <Route path="/shared/:shareId" element={<SharedContentPage />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </AuthProvider>
   )
 }
 
