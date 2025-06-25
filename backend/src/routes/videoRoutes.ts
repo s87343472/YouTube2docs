@@ -11,6 +11,7 @@ export async function videoRoutes(fastify: FastifyInstance) {
    * 提交视频处理请求
    */
   fastify.post('/videos/process', {
+    preHandler: [], // 暂时不要求认证，但可以提取用户信息
     schema: {
       body: {
         type: 'object',
@@ -61,10 +62,10 @@ export async function videoRoutes(fastify: FastifyInstance) {
     try {
       console.log('📥 Received video processing request:', request.body.youtubeUrl)
       
-      // 这里可以添加用户认证逻辑
-      // const userId = request.user?.id
+      // 提取用户ID（如果用户已登录）
+      const userId = request.user?.id || 1 // 临时硬编码为用户1，实际部署时改为从认证中获取
       
-      const result = await VideoProcessor.processVideo(request.body)
+      const result = await VideoProcessor.processVideo(request.body, Number(userId))
       
       reply.code(200).send(result)
     } catch (error) {
@@ -410,24 +411,6 @@ function convertMarkdownToHtml(text: string): string {
   return html;
 }
 
-/**
- * 将markdown格式转换为HTML
- */
-function convertMarkdownToHtml(text: string): string {
-  if (!text) return text
-  
-  return text
-    // 处理粗体 **text** -> <strong>text</strong>
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // 处理斜体 *text* -> <em>text</em>
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // 处理代码块 `code` -> <code>code</code>
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-    // 处理链接 [text](url) -> <a href="url">text</a>
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    // 保持换行
-    .replace(/\n/g, '<br/>')
-}
 
 /**
  * 生成问答卡片的建议答案
