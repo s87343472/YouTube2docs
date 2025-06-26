@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { VideoAPI, APIUtils } from '../services/api'
+import { useQuotaCheck } from '../hooks/useQuotaCheck'
+import { QuotaWarningModal } from '../components/QuotaWarningModal'
+import type { QuotaCheckResult } from '../services/quotaService'
 import { 
-  Play, 
+  // Play, // Commented out as unused
   Zap, 
   Brain, 
   Globe, 
@@ -17,7 +20,10 @@ import {
 export const HomePage = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showQuotaModal, setShowQuotaModal] = useState(false)
+  const [quotaCheckResult, setQuotaCheckResult] = useState<QuotaCheckResult | null>(null)
   const navigate = useNavigate()
+  const { checkAndRecordVideoProcessing, checking } = useQuotaCheck()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +36,17 @@ export const HomePage = () => {
 
     setIsSubmitting(true)
     try {
-      // 直接提交处理请求获取processId
+      // 先检查配额
+      const { allowed, result } = await checkAndRecordVideoProcessing()
+      
+      if (!allowed) {
+        setQuotaCheckResult(result)
+        setShowQuotaModal(true)
+        setIsSubmitting(false)
+        return
+      }
+
+      // 配额检查通过，提交处理请求
       const response = await VideoAPI.processVideo({
         youtubeUrl: youtubeUrl.trim(),
         options: {
@@ -45,6 +61,35 @@ export const HomePage = () => {
     } catch (error) {
       console.error('Processing submission failed:', error)
       alert(`提交失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleUpgrade = () => {
+    setShowQuotaModal(false)
+    navigate('/user-center?tab=quota')
+  }
+
+  const handleForceProcess = async () => {
+    setShowQuotaModal(false)
+    setIsSubmitting(true)
+    
+    try {
+      // 强制处理（仅在某些情况下允许）
+      const response = await VideoAPI.processVideo({
+        youtubeUrl: youtubeUrl.trim(),
+        options: {
+          language: 'zh',
+          outputFormat: 'standard',
+          includeTimestamps: true
+        }
+      })
+
+      navigate(`/process/${response.processId}`)
+    } catch (error) {
+      console.error('Force processing failed:', error)
+      alert(`处理失败: ${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -88,13 +133,13 @@ export const HomePage = () => {
                 />
                 <button
                   type="submit"
-                  disabled={isSubmitting || !youtubeUrl.trim()}
+                  disabled={isSubmitting || checking || !youtubeUrl.trim()}
                   className="absolute inset-y-0 right-0 mr-2 px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  {isSubmitting ? (
+                  {(isSubmitting || checking) ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
-                      提交中...
+                      {checking ? '检查配额...' : '提交中...'}
                     </>
                   ) : (
                     <>
@@ -343,6 +388,18 @@ export const HomePage = () => {
           </Link>
         </div>
       </section>
+
+      {/* Quota Warning Modal */}
+      {quotaCheckResult && (
+        <QuotaWarningModal
+          isOpen={showQuotaModal}
+          onClose={() => setShowQuotaModal(false)}
+          quotaResult={quotaCheckResult}
+          onUpgrade={handleUpgrade}
+          onContinue={quotaCheckResult.upgradeRequired ? undefined : handleForceProcess}
+          title="视频处理配额限制"
+        />
+      )}
     </div>
   )
 }

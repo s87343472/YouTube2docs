@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { ShareService } from '../services/shareService'
+// import { shareCreateRateLimit } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
  * 分享功能相关的API路由
@@ -11,6 +12,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * POST /api/shares
    */
   fastify.post('/shares', {
+    // preHandler: [shareCreateRateLimit], // Temporarily disabled
     schema: {
       body: {
         type: 'object',

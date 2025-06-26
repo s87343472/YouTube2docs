@@ -141,7 +141,7 @@ export function rateLimit(config: RateLimitConfig) {
       reply.header('X-RateLimit-Reset', new Date(resetTime).toISOString())
       
       if (count > maxRequests) {
-        logger.warn('Rate limit exceeded', {
+        logger.warn('Rate limit exceeded', undefined, {
           requestId: request.requestId,
           key,
           count,
@@ -168,7 +168,7 @@ export function rateLimit(config: RateLimitConfig) {
       
       // Log if approaching limit
       if (count > maxRequests * 0.8) {
-        logger.warn('Rate limit warning - approaching limit', {
+        logger.warn('Rate limit warning - approaching limit', undefined, {
           requestId: request.requestId,
           key,
           count,
@@ -187,7 +187,7 @@ export function rateLimit(config: RateLimitConfig) {
         if (shouldSkip) {
           // We would need to decrement here, but it's complex with time windows
           // For simplicity, we just log this case
-          logger.debug('Rate limit count should be skipped', {
+          logger.debug('Rate limit count should be skipped', undefined, {
             requestId: request.requestId,
             statusCode,
             skipSuccessfulRequests,
@@ -295,7 +295,7 @@ export const rateLimitMiddleware = {
 export async function resetUserRateLimit(userId: string): Promise<void> {
   try {
     await store.reset(`user:${userId}`)
-    logger.info('Rate limit reset for user', {
+    logger.info('Rate limit reset for user', undefined, {
       userId
     }, LogCategory.SECURITY)
   } catch (error) {
@@ -312,7 +312,7 @@ export async function resetUserRateLimit(userId: string): Promise<void> {
 export async function resetIpRateLimit(ip: string): Promise<void> {
   try {
     await store.reset(`ip:${ip}`)
-    logger.info('Rate limit reset for IP', {
+    logger.info('Rate limit reset for IP', undefined, {
       ip
     }, LogCategory.SECURITY)
   } catch (error) {

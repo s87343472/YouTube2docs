@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Play, Menu, X, User, LogOut } from 'lucide-react'
+import { Play, Menu, X, User, LogOut, Crown } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../AuthProvider'
 import { authClient } from '../../lib/auth-client'
+// import { QuotaDisplay } from '../QuotaDisplay' // Commented out as it's not used
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -41,6 +42,12 @@ export const Header = () => {
               关于
             </Link>
             <Link 
+              to="/pricing" 
+              className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+            >
+              套餐价格
+            </Link>
+            <Link 
               to="/api-test" 
               className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
             >
@@ -54,6 +61,14 @@ export const Header = () => {
                 >
                   <User className="h-4 w-4 mr-1" />
                   {user?.name || '个人中心'}
+                </Link>
+                <Link 
+                  to="/subscription/manage" 
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors flex items-center"
+                  title="管理订阅"
+                >
+                  <Crown className="h-4 w-4 mr-1" />
+                  订阅管理
                 </Link>
                 <button
                   onClick={handleSignOut}
@@ -110,6 +125,13 @@ export const Header = () => {
                 关于
               </Link>
               <Link
+                to="/pricing"
+                className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                套餐价格
+              </Link>
+              <Link
                 to="/api-test"
                 className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
                 onClick={() => setIsMenuOpen(false)}
@@ -125,6 +147,14 @@ export const Header = () => {
                   >
                     <User className="h-4 w-4 mr-1" />
                     {user?.name || '个人中心'}
+                  </Link>
+                  <Link
+                    to="/subscription/manage"
+                    className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium flex items-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Crown className="h-4 w-4 mr-1" />
+                    订阅管理
                   </Link>
                   <button
                     onClick={() => {

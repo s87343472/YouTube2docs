@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { auth } from '../lib/auth'
 import { logger, LogCategory } from '../utils/logger'
+// import { loginAttemptRateLimit } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
  * Better Auth 路由处理器
@@ -13,7 +14,9 @@ export async function betterAuthRoutes(fastify: FastifyInstance) {
    * Better Auth API 路由
    * 处理所有 /api/auth/* 的请求
    */
-  fastify.all('/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.all('/auth/*', {
+    // preHandler: [loginAttemptRateLimit] // Temporarily disabled
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       logger.info('Better Auth request', undefined, {}, LogCategory.USER)
 

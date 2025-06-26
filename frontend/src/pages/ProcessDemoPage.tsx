@@ -450,7 +450,7 @@ export const ProcessDemoPage: React.FC = () => {
                             }, {})
                           ).map(([type, count]) => (
                             <span key={type} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {type}: {count}
+                              {String(type)}: {String(count)}
                             </span>
                           ))}
                         </div>

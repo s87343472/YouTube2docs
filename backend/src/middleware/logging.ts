@@ -1,189 +1,87 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
-import { logger, generateRequestId, createRequestLogger, LogCategory } from '../utils/logger'
+import { logger, createRequestLogger, generateRequestId, LogCategory, LogContext } from '../utils/logger'
 import { config } from '../config'
 
 /**
- * 请求日志中间件
- * 提供请求跟踪、性能监控和错误记录
+ * 请求日志中间件配置
  */
-
-// Request logging configuration
-interface RequestLoggingConfig {
+interface LoggingConfig {
   enableRequestLogging: boolean
   enableResponseLogging: boolean
   enablePerformanceLogging: boolean
   logRequestBody: boolean
   logResponseBody: boolean
-  sensitiveFields: string[]
   maxBodySize: number
+  sensitiveHeaders: string[]
 }
 
-// Default configuration
-const defaultConfig: RequestLoggingConfig = {
-  enableRequestLogging: config.logging.enableRequestLogging,
-  enableResponseLogging: true,
-  enablePerformanceLogging: true,
-  logRequestBody: false, // Security consideration
-  logResponseBody: false, // Performance consideration
-  sensitiveFields: [
-    'password',
-    'token',
-    'authorization',
-    'cookie',
-    'apiKey',
-    'secret',
-    'key'
-  ],
-  maxBodySize: 1024 * 10 // 10KB max for body logging
-}
-
-/**
- * 请求关联ID中间件
- * 为每个请求生成唯一ID用于日志跟踪
- */
-export async function requestCorrelation(request: FastifyRequest, reply: FastifyReply) {
-  // Generate or extract request ID
-  const requestId = 
-    request.headers['x-request-id'] as string ||
-    request.headers['x-correlation-id'] as string ||
-    generateRequestId()
-  
-  // Add request ID to request object
-  request.requestId = requestId
-  
-  // Add request ID to response headers
-  reply.header('X-Request-ID', requestId)
-  
-  // Create request-scoped logger
-  const requestLogger = createRequestLogger(requestId)
-  
-  // Add logger to request context
-  ;(request as any).logger = requestLogger
+const loggingConfig: LoggingConfig = {
+  enableRequestLogging: config.logging.enableRequestLogging || true,
+  enableResponseLogging: config.logging.enableResponseLogging || true,
+  enablePerformanceLogging: config.logging.enablePerformanceLogging || true,
+  logRequestBody: config.logging.logRequestBody || false,
+  logResponseBody: config.logging.logResponseBody || false,
+  maxBodySize: config.logging.maxBodySize || 1024,
+  sensitiveHeaders: ['authorization', 'cookie', 'x-api-key', 'x-auth-token']
 }
 
 /**
  * 请求日志中间件
+ * 记录所有HTTP请求和响应
  */
-export function requestLogging(customConfig?: Partial<RequestLoggingConfig>) {
-  const loggingConfig = { ...defaultConfig, ...customConfig }
+export async function requestLogging(request: FastifyRequest, reply: FastifyReply) {
+  const startTime = Date.now()
+  const requestId = request.requestId || generateRequestId()
+  const requestLogger = createRequestLogger(requestId)
   
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    const startTime = Date.now()
-    const requestLogger = (request as any).logger || logger
-    
-    // Log incoming request
-    if (loggingConfig.enableRequestLogging) {
-      const requestData: any = {
-        requestId: request.requestId,
-        method: request.method,
-        url: request.url,
-        userAgent: request.headers['user-agent'],
-        ip: request.ip,
-        userId: request.user?.id,
-        headers: sanitizeHeaders(request.headers, loggingConfig.sensitiveFields)
-      }
-      
-      // Optionally log request body
-      if (loggingConfig.logRequestBody && request.body) {
-        const bodySize = JSON.stringify(request.body).length
-        if (bodySize <= loggingConfig.maxBodySize) {
-          requestData.body = sanitizeObject(request.body, loggingConfig.sensitiveFields)
-        } else {
-          requestData.bodySize = bodySize
-          requestData.bodyTruncated = true
-        }
-      }
-      
-      // Log query parameters
-      if (request.query && Object.keys(request.query).length > 0) {
-        requestData.query = sanitizeObject(request.query, loggingConfig.sensitiveFields)
-      }
-      
-      requestLogger.info('HTTP Request', requestData, LogCategory.API)
+  // Store timing and logger for later use
+  ;(request as any).startTime = startTime
+  ;(request as any).logger = requestLogger
+  ;(request as any).requestId = requestId
+  
+  // Log incoming request
+  if (loggingConfig.enableRequestLogging) {
+    const requestData: LogContext = {
+      requestId,
+      method: request.method,
+      url: request.url,
+      ip: request.ip,
+      userAgent: request.headers['user-agent'] as string,
+      userId: (request as any).user?.id,
+      headers: sanitizeHeaders(request.headers)
     }
     
-    // Add response logging hook
-    reply.addHook('onSend', async (request, reply, payload) => {
-      const endTime = Date.now()
-      const duration = endTime - startTime
-      const statusCode = reply.statusCode
-      
-      // Log response
-      if (loggingConfig.enableResponseLogging) {
-        const responseData: any = {
-          requestId: request.requestId,
-          method: request.method,
-          url: request.url,
-          statusCode,
-          duration,
-          userId: request.user?.id,
-          contentLength: reply.getHeader('content-length') || payload?.length || 0
-        }
-        
-        // Optionally log response body
-        if (loggingConfig.logResponseBody && payload) {
-          const bodySize = typeof payload === 'string' ? payload.length : JSON.stringify(payload).length
-          if (bodySize <= loggingConfig.maxBodySize) {
-            try {
-              responseData.body = typeof payload === 'string' ? JSON.parse(payload) : payload
-            } catch {
-              responseData.body = payload.toString().substring(0, 100) + '...'
-            }
-          } else {
-            responseData.bodySize = bodySize
-            responseData.bodyTruncated = true
-          }
-        }
-        
-        // Log level based on status code
-        if (statusCode >= 500) {
-          requestLogger.error('HTTP Response - Server Error', undefined, responseData, LogCategory.API)
-        } else if (statusCode >= 400) {
-          requestLogger.warn('HTTP Response - Client Error', responseData, LogCategory.API)
-        } else {
-          requestLogger.info('HTTP Response', responseData, LogCategory.API)
-        }
+    // Optionally log request body
+    if (loggingConfig.logRequestBody && request.body) {
+      const bodySize = JSON.stringify(request.body).length
+      if (bodySize <= loggingConfig.maxBodySize) {
+        requestData.body = request.body
+      } else {
+        requestData.bodySize = bodySize
+        requestData.bodyTruncated = true
       }
-      
-      // Performance logging
-      if (loggingConfig.enablePerformanceLogging) {
-        const performanceData = {
-          requestId: request.requestId,
-          method: request.method,
-          url: request.url,
-          duration,
-          statusCode,
-          userId: request.user?.id
-        }
-        
-        // Log slow requests
-        if (duration > 1000) { // 1 second threshold
-          requestLogger.warn('Slow Request', performanceData, LogCategory.PERFORMANCE)
-        } else if (duration > 500) { // 500ms threshold
-          requestLogger.info('Performance', performanceData, LogCategory.PERFORMANCE)
-        }
-      }
-      
-      return payload
-    })
+    }
     
-    // Add error logging hook
-    reply.addHook('onError', async (request, reply, error) => {
-      const endTime = Date.now()
-      const duration = endTime - startTime
-      
-      requestLogger.error('HTTP Request Error', error, {
-        requestId: request.requestId,
-        method: request.method,
-        url: request.url,
-        duration,
-        statusCode: reply.statusCode,
-        userId: request.user?.id,
-        errorName: error.name,
-        errorMessage: error.message
-      }, LogCategory.API)
-    })
+    requestLogger.info('HTTP Request', undefined, requestData)
   }
+}
+
+/**
+ * 清理敏感头信息
+ */
+function sanitizeHeaders(headers: Record<string, any>): Record<string, any> {
+  const sanitized = { ...headers }
+  
+  for (const sensitiveHeader of loggingConfig.sensitiveHeaders) {
+    if (sanitized[sensitiveHeader]) {
+      sanitized[sensitiveHeader] = '[REDACTED]'
+    }
+    if (sanitized[sensitiveHeader.toLowerCase()]) {
+      sanitized[sensitiveHeader.toLowerCase()] = '[REDACTED]'
+    }
+  }
+  
+  return sanitized
 }
 
 /**
@@ -198,97 +96,36 @@ export async function securityLogging(request: FastifyRequest, reply: FastifyRep
     /\.\./,           // Path traversal attempts
     /<script/i,       // XSS attempts
     /union.*select/i, // SQL injection attempts
-    /exec\(/i,        // Code execution attempts
-    /eval\(/i         // Code evaluation attempts
+    /javascript:/i,   // JavaScript injection
+    /data:.*base64/i  // Data URI attempts
   ]
   
   const url = request.url
-  const userAgent = request.headers['user-agent'] || ''
+  const userAgent = request.headers['user-agent'] as string || ''
   
   for (const pattern of suspiciousPatterns) {
     if (pattern.test(url) || pattern.test(userAgent)) {
-      requestLogger.security('Suspicious Request Pattern', {
+      requestLogger.security('Suspicious request detected', {
         requestId: request.requestId,
-        pattern: pattern.source,
+        pattern: pattern.toString(),
         url,
         userAgent,
         ip: request.ip,
-        method: request.method
+        userId: (request as any).user?.id
       })
       break
     }
   }
   
-  // Log authentication events
-  reply.addHook('onSend', async (request, reply, payload) => {
-    const statusCode = reply.statusCode
-    
-    // Log authentication failures
-    if (statusCode === 401) {
-      requestLogger.security('Authentication Failed', {
-        requestId: request.requestId,
-        url: request.url,
-        ip: request.ip,
-        userAgent: request.headers['user-agent']
-      })
-    }
-    
-    // Log authorization failures
-    if (statusCode === 403) {
-      requestLogger.security('Authorization Failed', {
-        requestId: request.requestId,
-        url: request.url,
-        ip: request.ip,
-        userId: request.user?.id,
-        userAgent: request.headers['user-agent']
-      })
-    }
-    
-    return payload
-  })
-}
-
-/**
- * 清理敏感信息
- */
-function sanitizeHeaders(headers: any, sensitiveFields: string[]): any {
-  const sanitized = { ...headers }
-  
-  for (const field of sensitiveFields) {
-    const lowerField = field.toLowerCase()
-    for (const key in sanitized) {
-      if (key.toLowerCase().includes(lowerField)) {
-        sanitized[key] = '[REDACTED]'
-      }
-    }
+  // Log failed authentication attempts
+  if (request.url.includes('/auth/') && request.method === 'POST') {
+    requestLogger.security('Authentication attempt', {
+      requestId: request.requestId,
+      url: request.url,
+      ip: request.ip,
+      userAgent
+    })
   }
-  
-  return sanitized
-}
-
-function sanitizeObject(obj: any, sensitiveFields: string[]): any {
-  if (typeof obj !== 'object' || obj === null) {
-    return obj
-  }
-  
-  const sanitized = Array.isArray(obj) ? [...obj] : { ...obj }
-  
-  for (const key in sanitized) {
-    const lowerKey = key.toLowerCase()
-    
-    // Check if key contains sensitive field name
-    const isSensitive = sensitiveFields.some(field => 
-      lowerKey.includes(field.toLowerCase())
-    )
-    
-    if (isSensitive) {
-      sanitized[key] = '[REDACTED]'
-    } else if (typeof sanitized[key] === 'object') {
-      sanitized[key] = sanitizeObject(sanitized[key], sensitiveFields)
-    }
-  }
-  
-  return sanitized
 }
 
 /**
@@ -296,7 +133,7 @@ function sanitizeObject(obj: any, sensitiveFields: string[]): any {
  * 记录用户的重要操作
  */
 export async function userActivityLogging(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.user) return
+  if (!(request as any).user) return
   
   const requestLogger = (request as any).logger || logger
   
@@ -308,55 +145,161 @@ export async function userActivityLogging(request: FastifyRequest, reply: Fastif
   ]
   
   if (importantActions.includes(request.method)) {
-    reply.addHook('onSend', async (request, reply, payload) => {
-      // Only log successful operations
-      if (reply.statusCode < 400) {
-        requestLogger.user(request.user!.id, `${request.method} ${request.url}`, {
-          requestId: request.requestId,
-          statusCode: reply.statusCode,
-          url: request.url,
-          method: request.method
-        })
-      }
-      
-      return payload
-    })
+    // Store user action for later logging
+    ;(request as any).logUserAction = true
   }
 }
 
-// 导出中间件组合
-export const loggingMiddleware = {
-  // 核心日志中间件 - 按顺序应用
-  core: [
-    requestCorrelation,
-    requestLogging(),
-    securityLogging,
-    userActivityLogging
-  ],
+/**
+ * Database operation logging
+ * Log database queries and performance
+ */
+export function logDatabaseOperation(
+  operation: string,
+  table?: string,
+  duration?: number,
+  error?: Error,
+  requestId?: string
+) {
+  const requestLogger = requestId ? createRequestLogger(requestId) : logger
   
-  // 详细日志中间件 - 用于开发环境
-  detailed: [
-    requestCorrelation,
-    requestLogging({
-      logRequestBody: true,
-      logResponseBody: true,
-      maxBodySize: 1024 * 50 // 50KB for development
-    }),
-    securityLogging,
-    userActivityLogging
-  ],
+  const context: LogContext = {
+    operation,
+    table,
+    duration,
+    requestId
+  }
   
-  // 最小日志中间件 - 用于生产环境
-  minimal: [
-    requestCorrelation,
-    requestLogging({
-      enableResponseLogging: false,
-      enablePerformanceLogging: false,
-      logRequestBody: false,
-      logResponseBody: false
-    })
-  ]
+  if (error) {
+    requestLogger.error(`Database operation failed: ${operation}`, error, context)
+  } else {
+    if (duration && duration > 1000) {
+      requestLogger.warn(`Slow database operation: ${operation}`, undefined, context)
+    } else {
+      requestLogger.info(`Database operation: ${operation}`, undefined, context)
+    }
+  }
 }
 
-// Export configuration and utilities
-export { RequestLoggingConfig, sanitizeHeaders, sanitizeObject }
+/**
+ * Service call logging
+ * Log external service calls and API requests
+ */
+export function logServiceCall(
+  service: string,
+  method: string,
+  duration?: number,
+  success: boolean = true,
+  error?: Error,
+  requestId?: string
+) {
+  const requestLogger = requestId ? createRequestLogger(requestId) : logger
+  
+  const context: LogContext = {
+    service,
+    method,
+    duration,
+    success,
+    requestId
+  }
+  
+  if (!success && error) {
+    requestLogger.error(`Service call failed: ${service}.${method}`, error, context)
+  } else {
+    if (duration && duration > 5000) { // 5 second threshold for external services
+      requestLogger.warn(`Slow service call: ${service}.${method}`, undefined, context)
+    } else {
+      requestLogger.info(`Service call: ${service}.${method}`, undefined, context)
+    }
+  }
+}
+
+/**
+ * Error context capture
+ * Capture additional context when errors occur
+ */
+export function captureRequestErrorContext(request: FastifyRequest, error: Error) {
+  const requestLogger = (request as any).logger || logger
+  
+  const errorContext: LogContext = {
+    requestId: (request as any).requestId,
+    method: request.method,
+    url: request.url,
+    userAgent: request.headers['user-agent'] as string,
+    ip: request.ip,
+    userId: (request as any).user?.id,
+    body: request.body,
+    query: request.query,
+    params: request.params,
+    headers: sanitizeHeaders(request.headers)
+  }
+  
+  requestLogger.error('Request processing error', error, errorContext)
+  
+  return errorContext
+}
+
+/**
+ * Log response completion
+ * Should be called after response is sent
+ */
+export function logResponseCompletion(request: FastifyRequest, reply: FastifyReply) {
+  const startTime = (request as any).startTime
+  const requestLogger = (request as any).logger || logger
+  
+  if (!startTime) return
+  
+  const endTime = Date.now()
+  const duration = endTime - startTime
+  const statusCode = reply.statusCode
+  
+  // Log response
+  if (loggingConfig.enableResponseLogging) {
+    const responseData: LogContext = {
+      requestId: (request as any).requestId,
+      method: request.method,
+      url: request.url,
+      statusCode,
+      duration,
+      userId: (request as any).user?.id
+    }
+    
+    // Log level based on status code
+    if (statusCode >= 500) {
+      requestLogger.error('HTTP Response - Server Error', undefined, responseData)
+    } else if (statusCode >= 400) {
+      requestLogger.warn('HTTP Response - Client Error', undefined, responseData)
+    } else {
+      requestLogger.info('HTTP Response', undefined, responseData)
+    }
+  }
+  
+  // Performance logging
+  if (loggingConfig.enablePerformanceLogging) {
+    const performanceData: LogContext = {
+      requestId: (request as any).requestId,
+      method: request.method,
+      url: request.url,
+      duration,
+      statusCode,
+      userId: (request as any).user?.id
+    }
+    
+    // Log slow requests
+    if (duration > 1000) { // 1 second threshold
+      requestLogger.warn('Slow Request', undefined, performanceData)
+    } else if (duration > 500) { // 500ms threshold
+      requestLogger.info('Performance', undefined, performanceData)
+    }
+  }
+  
+  // Log user actions
+  if ((request as any).logUserAction && statusCode < 400) {
+    requestLogger.user((request as any).user.id, `${request.method} ${request.url}`, {
+      requestId: (request as any).requestId,
+      statusCode: reply.statusCode,
+      url: request.url,
+      method: request.method
+    })
+  }
+}

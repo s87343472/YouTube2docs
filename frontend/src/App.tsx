@@ -10,6 +10,10 @@ import { UserCenterPage } from './pages/UserCenterPage'
 import { SharedContentPage } from './pages/SharedContentPage'
 import { LoginPage } from './pages/LoginPage'
 import { AuthProvider } from './components/AuthProvider'
+import PricingPage from './pages/PricingPage'
+import SubscriptionManagePage from './pages/SubscriptionManagePage'
+import SubscriptionUpgradePage from './pages/SubscriptionUpgradePage'
+import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage'
 
 function App() {
   return (
@@ -27,6 +31,10 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/user-center" element={<UserCenterPage />} />
           <Route path="/shared/:shareId" element={<SharedContentPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/subscription/manage" element={<SubscriptionManagePage />} />
+          <Route path="/subscription/upgrade" element={<SubscriptionUpgradePage />} />
+          <Route path="/subscription/success" element={<SubscriptionSuccessPage />} />
           </Routes>
         </Layout>
       </Router>

@@ -3,7 +3,7 @@ import { VideoAPI, SystemAPI, APIUtils } from '../services/api'
 /**
  * 前后端API集成测试工具
  */
-export class APITestRunner {
+class APITestRunner {
   
   /**
    * 运行完整的API集成测试
@@ -202,5 +202,9 @@ export const runAPITests = async () => {
 // 导出到window对象，方便浏览器控制台调用
 if (typeof window !== 'undefined') {
   (window as any).runAPITests = runAPITests
+  // @ts-ignore 
   (window as any).APITestRunner = APITestRunner
 }
+
+// 导出供外部使用
+export { APITestRunner }
