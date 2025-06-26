@@ -7,7 +7,7 @@
 ### 一键启动所有服务
 ```bash
 # 启动数据库、后端、前端服务
-./start-all-services.sh
+./start-services.sh
 
 # 停止所有服务
 ./stop-services.sh
@@ -50,9 +50,14 @@ GROQ_API_KEY=your_groq_api_key_here
 # 内容分析 (必需)  
 GEMINI_API_KEY=your_gemini_api_key_here
 
+# JWT认证密钥 (必需)
+JWT_SECRET=your_jwt_secret_key_at_least_32_characters_long
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_different_from_jwt_secret
+
 # Google OAuth登录 (可选)
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
 
 # 数据库配置
 DATABASE_URL=postgresql://sagasu@localhost:5432/youtube_learning
@@ -85,25 +90,27 @@ CORS_ORIGIN=http://localhost:5173
 - **概念解释**: AI生成的深度解释
 - **多格式导出**: PDF/Markdown/图片
 
-### 🔐 用户认证
-- **邮箱登录**: 注册/登录系统
-- **Google OAuth**: 一键Google登录
-- **会话管理**: 安全的用户会话
-- **用户中心**: 个人数据管理
+### 🔐 用户认证 (v2.0 自定义JWT系统)
+- **邮箱登录**: 安全的注册/登录系统，bcrypt密码哈希
+- **Google OAuth 2.0**: 一键Google登录集成
+- **JWT令牌认证**: 15分钟访问令牌 + 7天刷新令牌
+- **密码强度验证**: 智能密码强度检测和弱密码防护
+- **用户中心**: 完整的个人数据和配额管理
 
 ## 🛠️ 技术架构
 
 ### 前端技术栈
 - **React 18** + TypeScript + Vite
 - **Tailwind CSS** 样式框架
-- **Better Auth** 用户认证
+- **自定义JWT认证** 用户认证系统
 - **Lucide React** 图标库
 
 ### 后端技术栈  
 - **Node.js** + TypeScript + Fastify
 - **PostgreSQL** 主数据库
 - **Redis** 缓存和会话
-- **Better Auth** 认证服务
+- **JWT认证服务** 安全的令牌认证
+- **Google OAuth 2.0** 第三方登录
 - **Groq SDK** 音频转录
 - **Google Gemini** 内容分析
 
@@ -118,7 +125,7 @@ CORS_ORIGIN=http://localhost:5173
 │   ├── src/
 │   │   ├── routes/            # API路由
 │   │   ├── services/          # 业务逻辑  
-│   │   ├── lib/               # 认证配置
+│   │   ├── lib/               # 工具库
 │   │   ├── middleware/        # 中间件
 │   │   ├── utils/             # 工具函数
 │   │   └── config/            # 配置文件
@@ -128,13 +135,14 @@ CORS_ORIGIN=http://localhost:5173
 │   │   ├── components/        # React组件
 │   │   ├── pages/             # 页面组件
 │   │   ├── services/          # API服务
-│   │   └── lib/               # 认证客户端
+│   │   └── lib/               # 认证客户端和工具
 ├── database/                   # 数据库
 │   ├── migrations/            # 数据库迁移
 │   └── seeds/                 # 初始数据
-├── start-all-services.sh      # 一键启动脚本
+├── start-services.sh          # 一键启动脚本
 ├── stop-services.sh           # 停止服务脚本
-└── restart-services.sh        # 重启服务脚本
+├── restart-services.sh        # 重启服务脚本
+└── setup-database.sh          # 数据库初始化脚本
 ```
 
 ## 🚀 开发环境搭建
@@ -148,8 +156,8 @@ CORS_ORIGIN=http://localhost:5173
 ### 安装步骤
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
-cd youtube-learning-generator
+git clone https://github.com/sagasu/005.git
+cd 005
 
 # 2. 安装依赖
 cd backend && npm install
@@ -163,12 +171,21 @@ cp backend/.env.example backend/.env
 brew services start postgresql@14
 brew services start redis
 
-# 5. 运行数据库迁移
-cd backend
-npm run migrate
+# 5. 初始化数据库
+# 使用自动化脚本初始化数据库
+./setup-database.sh
+
+# 或手动执行以下命令:
+# psql -h localhost -U sagasu -d postgres -c "CREATE DATABASE youtube_learning;"
+# 然后运行所有迁移文件...
 
 # 6. 启动服务
-./start-all-services.sh
+./start-services.sh
+
+# 🔔 认证系统说明:
+# 项目已从Better Auth v1.2.10迁移到自定义JWT认证系统
+# 这解决了生产环境兼容性问题，提供更可靠的认证服务
+# 详细文档: backend/docs/authentication-system-v2.md
 ```
 
 ## 📝 使用说明
@@ -184,7 +201,10 @@ npm run migrate
 ### 管理服务
 ```bash
 # 检查服务状态
-./check-status.sh
+# 可以使用以下命令检查各服务状态:
+ps aux | grep node
+brew services list | grep postgresql
+brew services list | grep redis
 
 # 查看日志
 tail -f backend/logs/app.log
@@ -219,13 +239,18 @@ brew services info postgresql@14
 ### 核心端点
 - `POST /api/video/process` - 处理YouTube视频
 - `GET /api/video/:id` - 获取处理结果
-- `POST /auth/sign-in` - 用户登录
-- `POST /auth/sign-up` - 用户注册
+- `POST /api/auth/login` - 用户登录
+- `POST /api/auth/register` - 用户注册
+- `GET /api/auth/google` - Google OAuth登录
+- `POST /api/auth/callback/google` - Google OAuth回调
+- `GET /api/auth/me` - 获取当前用户信息
+- `POST /api/auth/refresh` - 刷新访问令牌
 - `GET /health` - 健康检查
 
 ### 认证方式
-- **Bearer Token**: API请求需要在Header中包含认证token
-- **Cookie Session**: 浏览器自动管理session cookie
+- **JWT Bearer Token**: API请求需要在Header中包含 `Authorization: Bearer <token>`
+- **自动令牌刷新**: 15分钟访问令牌 + 7天刷新令牌机制
+- **Google OAuth 2.0**: 支持一键Google登录
 
 ## 🤝 贡献指南
 
@@ -301,8 +326,8 @@ GRANT ALL PRIVILEGES ON DATABASE youtube_learning TO youtube_user;
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/youtube-learning-generator.git
-cd youtube-learning-generator
+git clone https://github.com/sagasu/005.git
+cd 005
 
 # 安装后端依赖
 cd backend
@@ -346,19 +371,39 @@ GEMINI_API_KEY=your_gemini_api_key
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 
+# JWT认证配置 (必需)
+JWT_SECRET=your_jwt_secret_key_at_least_32_characters_long
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_different_from_jwt_secret
+
 # 安全配置
-JWT_SECRET=your_jwt_secret_key
 CORS_ORIGIN=https://your-domain.com
 
 # 文件存储
 UPLOAD_DIR=/var/www/youtube-learning/uploads
 ```
 
-#### 6. 运行数据库迁移
+#### 6. 初始化数据库
 
 ```bash
-cd backend
-npm run migrate
+# 创建数据库
+sudo -u postgres psql -c "CREATE DATABASE youtube_learning;"
+sudo -u postgres psql -c "CREATE USER youtube_user WITH ENCRYPTED PASSWORD 'your_secure_password';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE youtube_learning TO youtube_user;"
+
+# 运行所有迁移文件
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/001_initial_schema.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/005_create_users.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/006_better_auth_tables.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/007_create_user_quota_system.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/008_update_quota_plans.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/009_create_video_cache_system.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/010_create_abuse_prevention_system.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/011_create_notification_system.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/012_create_user_id_mapping.sql
+psql -h localhost -U youtube_user -d youtube_learning -f database/migrations/013_fix_updated_at_trigger.sql
+
+# 注意: 认证系统已升级到v2.0自定义JWT系统
+# 新系统完全兼容现有数据，无需额外迁移步骤
 ```
 
 #### 7. 配置 Nginx
@@ -374,7 +419,7 @@ server {
     server_name your-domain.com www.your-domain.com;
 
     # 前端静态文件
-    root /home/ubuntu/youtube-learning-generator/frontend/dist;
+    root /home/ubuntu/005/frontend/dist;
     index index.html;
 
     # 前端路由处理
@@ -670,6 +715,27 @@ location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
 - Redis 集群
 - CDN 配置
 - 应用层缓存
+
+## 🔐 认证系统v2.0更新说明
+
+### 重大升级
+项目已从 **Better Auth v1.2.10** 成功迁移到 **自定义JWT认证系统v2.0**，解决了生产环境兼容性问题。
+
+### 主要改进
+- ✅ **企业级安全**: bcrypt密码哈希 + 密码强度验证
+- ✅ **现代JWT**: 15分钟访问令牌 + 7天刷新令牌机制  
+- ✅ **完整Google OAuth 2.0**: 一键登录集成
+- ✅ **无缝迁移**: 完全兼容现有配额和订阅系统
+- ✅ **生产就绪**: 移除Better Auth的Node.js兼容性问题
+
+### 新增功能
+- 🔒 **智能密码验证**: 弱密码检测和强度评估
+- 🔄 **自动令牌刷新**: 无感知的令牌更新机制
+- 📊 **详细认证日志**: 完整的安全事件记录
+- 🛡️ **CSRF防护**: Google OAuth状态参数验证
+
+### 开发者文档
+完整的认证系统文档: `backend/docs/authentication-system-v2.md`
 
 ---
 
