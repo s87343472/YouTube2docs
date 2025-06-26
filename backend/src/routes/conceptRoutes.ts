@@ -37,7 +37,7 @@ export async function conceptRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/concepts/explain', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {
@@ -131,7 +131,7 @@ export async function conceptRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/concepts/detailed', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {
@@ -197,7 +197,7 @@ export async function conceptRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/concepts/batch-explain', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {
@@ -270,7 +270,7 @@ export async function conceptRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/concepts/search-related', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {

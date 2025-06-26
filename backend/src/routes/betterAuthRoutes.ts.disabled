@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { auth } from '../lib/auth'
 import { logger, LogCategory } from '../utils/logger'
-// import { loginAttemptRateLimit } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
  * Better Auth 路由处理器
@@ -14,20 +13,22 @@ export async function betterAuthRoutes(fastify: FastifyInstance) {
    * Better Auth API 路由
    * 处理所有 /api/auth/* 的请求
    */
-  fastify.all('/auth/*', {
-    // preHandler: [loginAttemptRateLimit] // Temporarily disabled
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.all('/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      logger.info('Better Auth request', undefined, {}, LogCategory.USER)
-
-      // 创建Web API请求对象
-      const url = new URL(request.url, `http://${request.headers.host}`)
-      const method = request.method
+      // 创建Web API请求对象 - 移除/api前缀给Better Auth
+      const pathWithoutApi = request.url.replace(/^\/api/, '')
+      const url = new URL(pathWithoutApi, `http://${request.headers.host}`)
+      
+      // 确保请求体格式正确
+      let requestBody = undefined
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        requestBody = request.body ? JSON.stringify(request.body) : undefined
+      }
       
       const webRequest = new Request(url.toString(), {
-        method,
+        method: request.method,
         headers: request.headers as any,
-        body: method !== 'GET' && method !== 'HEAD' ? JSON.stringify(request.body) : undefined,
+        body: requestBody,
       })
 
       // 使用Better Auth处理请求

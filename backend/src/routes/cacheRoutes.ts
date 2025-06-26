@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { VideoCacheService } from '../services/videoCacheService'
 import { logger } from '../utils/logger'
-import { authMiddleware } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/authMiddleware'
 
 /**
  * 视频缓存管理相关的API路由
@@ -13,8 +13,6 @@ export async function cacheRoutes(fastify: FastifyInstance) {
    */
   fastify.get('/cache/stats', {
     schema: {
-      description: '获取视频缓存统计信息',
-      tags: ['cache'],
       response: {
         200: {
           type: 'object',
@@ -67,10 +65,8 @@ export async function cacheRoutes(fastify: FastifyInstance) {
    * 获取用户缓存使用情况
    */
   fastify.get('/cache/user-usage', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '获取用户的缓存使用情况',
-      tags: ['cache'],
       response: {
         200: {
           type: 'object',
@@ -114,8 +110,6 @@ export async function cacheRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/cache/check', {
     schema: {
-      description: '检查特定YouTube URL的缓存状态',
-      tags: ['cache'],
       body: {
         type: 'object',
         required: ['youtubeUrl'],
@@ -188,8 +182,6 @@ export async function cacheRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/cache/cleanup', {
     schema: {
-      description: '清理过期的视频缓存',
-      tags: ['cache'],
       response: {
         200: {
           type: 'object',
@@ -229,8 +221,6 @@ export async function cacheRoutes(fastify: FastifyInstance) {
    */
   fastify.delete('/cache/:cacheId', {
     schema: {
-      description: '删除特定的视频缓存',
-      tags: ['cache'],
       params: {
         type: 'object',
         properties: {

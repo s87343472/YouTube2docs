@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { QuotaService } from '../services/quotaService'
 import { AbusePreventionService } from '../services/abusePreventionService'
 import { logger } from '../utils/logger'
-import { authMiddleware } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/authMiddleware'
 // import { planChangeRateLimit } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
@@ -15,8 +15,6 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    */
   fastify.get('/quota/plans', {
     schema: {
-      description: '获取所有可用的配额计划',
-      tags: ['quota'],
       response: {
         200: {
           type: 'object',
@@ -73,10 +71,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户当前订阅信息
    */
   fastify.get('/quota/subscription', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '获取用户当前订阅信息',
-      tags: ['quota'],
       response: {
         200: {
           type: 'object',
@@ -167,10 +163,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户配额使用情况
    */
   fastify.get('/quota/usage', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '获取用户所有配额使用情况',
-      tags: ['quota'],
       response: {
         200: {
           type: 'object',
@@ -219,10 +213,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 检查用户配额
    */
   fastify.post('/quota/check', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '检查用户是否可以执行某个操作',
-      tags: ['quota'],
       body: {
         type: 'object',
         required: ['quotaType'],
@@ -302,10 +294,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户配额预警
    */
   fastify.get('/quota/alerts', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '获取用户未读的配额预警',
-      tags: ['quota'],
       response: {
         200: {
           type: 'object',
@@ -354,10 +344,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 标记预警为已读
    */
   fastify.post('/quota/alerts/read', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '标记配额预警为已读',
-      tags: ['quota'],
       body: {
         type: 'object',
         required: ['alertIds'],
@@ -408,10 +396,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 升级套餐
    */
   fastify.post('/quota/upgrade', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '升级用户套餐',
-      tags: ['quota'],
       body: {
         type: 'object',
         required: ['planType'],
@@ -488,10 +474,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 降级套餐
    */
   fastify.post('/quota/downgrade', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '降级用户套餐（下个周期生效）',
-      tags: ['quota'],
       body: {
         type: 'object',
         required: ['planType'],
@@ -557,10 +541,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 取消订阅
    */
   fastify.post('/quota/cancel', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '取消订阅（当前周期结束后不再续费）',
-      tags: ['quota'],
       response: {
         200: {
           type: 'object',
@@ -611,10 +593,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 退款并取消会员
    */
   fastify.post('/quota/refund', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '退款并立即取消会员',
-      tags: ['quota'],
       body: {
         type: 'object',
         properties: {
@@ -668,10 +648,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 记录配额使用（内部API）
    */
   fastify.post('/quota/usage/record', {
-    preHandler: [authMiddleware.optional],
+    preHandler: [optionalAuth],
     schema: {
-      description: '记录配额使用情况',
-      tags: ['quota'],
       body: {
         type: 'object',
         required: ['quotaType', 'action'],

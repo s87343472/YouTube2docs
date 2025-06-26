@@ -1,305 +1,332 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
-import { config } from '../config'
+import { userService, CreateUserData } from '../services/userService'
+import { googleOAuthService } from '../services/googleOAuthService'
+import { userPlanIntegrationService } from '../services/userPlanIntegrationService'
+import { jwtService } from '../services/jwtService'
+import { passwordService } from '../services/passwordService'
+import { refreshTokenMiddleware, requireAuth } from '../middleware/authMiddleware'
 import { logger, LogCategory } from '../utils/logger'
-import { validators } from '../middleware/validation'
-import { DatabaseError, ValidationError, AuthenticationError } from '../errors'
-import { pool } from '../utils/database'
+import { getFrontendUrl } from '../utils/corsHelper'
+import { z } from 'zod'
 
 /**
- * 用户认证相关的API路由
- * 处理用户注册、登录、登出等功能
+ * 新的认证路由系统
+ * 替换 Better Auth，提供邮箱注册/登录和Google OAuth功能
  */
 
-interface RegisterRequest {
-  name: string
-  email: string
-  password: string
-}
+// 请求体验证schemas
+const registerSchema = z.object({
+  email: z.string().email('邮箱格式不正确'),
+  password: z.string().min(6, '密码至少6位'),
+  name: z.string().min(1, '姓名不能为空').max(100, '姓名过长'),
+  confirmPassword: z.string().min(6, '确认密码至少6位')
+}).refine((data) => data.password === data.confirmPassword, {
+  message: '两次输入的密码不一致',
+  path: ['confirmPassword']
+})
 
-interface LoginRequest {
-  email: string
-  password: string
-}
+const loginSchema = z.object({
+  email: z.string().email('邮箱格式不正确'),
+  password: z.string().min(1, '密码不能为空')
+})
 
-interface User {
-  id: string
-  name: string
-  email: string
-  password_hash: string
-  createdAt: string
-  is_active: boolean
-}
+const googleCallbackSchema = z.object({
+  code: z.string().min(1, 'Authorization code required'),
+  state: z.string().optional()
+})
 
 export async function authRoutes(fastify: FastifyInstance) {
   
   /**
-   * 用户注册
+   * 邮箱注册
    * POST /api/auth/register
    */
-  fastify.post('/auth/register', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name', 'email', 'password'],
-        properties: {
-          name: { type: 'string', minLength: 2, maxLength: 50 },
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6, maxLength: 100 }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            message: { type: 'string' },
-            data: {
-              type: 'object',
-              properties: {
-                user: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    email: { type: 'string' }
-                  }
-                },
-                token: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }, async (request: FastifyRequest<{ Body: RegisterRequest }>, reply: FastifyReply) => {
+  fastify.post('/auth/register', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { name, email, password } = request.body
+      // 验证请求体
+      const validatedData = registerSchema.parse(request.body)
       
-      logger.info('User registration attempt', undefined, {
-        email,
-        userAgent: request.headers['user-agent']
-      }, LogCategory.USER)
-
-      // 检查邮箱是否已存在
-      const existingUser = await pool.query(
-        'SELECT id FROM users WHERE email = $1',
-        [email]
-      )
-
-      if (existingUser.rows.length > 0) {
-        logger.warn('Registration failed: email already exists', undefined, {
-          email
-        }, LogCategory.USER)
-        
+      // 验证密码强度
+      const passwordValidation = passwordService.validatePasswordStrength(validatedData.password)
+      if (!passwordValidation.isValid) {
         return reply.code(400).send({
           success: false,
-          message: '邮箱地址已被注册'
+          message: '密码强度不足',
+          errors: passwordValidation.errors
         })
       }
 
-      // 密码加密
-      const saltRounds = 12
-      const passwordHash = await bcrypt.hash(password, saltRounds)
+      // 检查邮箱是否已被注册
+      const existingUser = await userService.findUserByEmail(validatedData.email)
+      if (existingUser) {
+        return reply.code(409).send({
+          success: false,
+          message: '该邮箱已被注册',
+          code: 'EMAIL_ALREADY_EXISTS'
+        })
+      }
 
-      // 创建用户（使用自增ID）
-      const result = await pool.query(`
-        INSERT INTO users (name, email, password_hash, is_active)
-        VALUES ($1, $2, $3, true)
-        RETURNING id, name, email, "createdAt"
-      `, [name, email, passwordHash])
+      // 创建用户数据
+      const userData: CreateUserData = {
+        email: validatedData.email,
+        password: validatedData.password,
+        name: validatedData.name,
+        emailVerified: false
+      }
 
-      const newUser = result.rows[0]
+      // 创建用户
+      const newUser = await userService.createUser(userData)
+      
+      // 初始化用户付费计划
+      await userPlanIntegrationService.initializeUserPlan(newUser.id, 'free')
 
-      // 生成JWT token
-      const token = jwt.sign(
-        { 
-          userId: newUser.id.toString(), 
-          email: newUser.email,
-          role: 'user'
-        },
-        config.security.jwtSecret,
-        { expiresIn: config.security.jwtExpiresIn } as jwt.SignOptions
-      )
-
-      logger.info('User registered successfully', undefined, {
+      // 生成JWT令牌
+      const tokens = jwtService.generateTokenPair({
         userId: newUser.id,
         email: newUser.email,
-        name: newUser.name
-      }, LogCategory.USER)
+        plan: newUser.plan
+      })
 
-      return reply.send({
+      // 返回用户信息和令牌
+      return reply.code(201).send({
         success: true,
         message: '注册成功',
         data: {
           user: {
             id: newUser.id,
+            email: newUser.email,
             name: newUser.name,
-            email: newUser.email
+            plan: newUser.plan,
+            emailVerified: newUser.emailVerified,
+            image: newUser.image
           },
-          token
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken
         }
       })
 
     } catch (error) {
-      logger.error('Registration error', error as Error, {
-        email: request.body.email
-      }, LogCategory.USER)
-
-      if (error instanceof ValidationError) {
+      if (error instanceof z.ZodError) {
         return reply.code(400).send({
           success: false,
-          message: error.message
+          message: '输入数据格式错误',
+          errors: error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
         })
       }
 
+      logger.error('Registration failed', error as Error, { 
+        email: (request.body as any)?.email 
+      }, LogCategory.USER)
+
       return reply.code(500).send({
         success: false,
-        message: '注册失败，请稍后重试'
+        message: error instanceof Error ? error.message : '注册失败'
       })
     }
   })
 
   /**
-   * 用户登录
+   * 邮箱登录
    * POST /api/auth/login
    */
-  fastify.post('/auth/login', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['email', 'password'],
-        properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 1 }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            message: { type: 'string' },
-            data: {
-              type: 'object',
-              properties: {
-                user: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    email: { type: 'string' }
-                  }
-                },
-                token: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }, async (request: FastifyRequest<{ Body: LoginRequest }>, reply: FastifyReply) => {
+  fastify.post('/auth/login', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { email, password } = request.body
-      
-      logger.info('User login attempt', undefined, {
-        email,
-        userAgent: request.headers['user-agent']
-      }, LogCategory.USER)
+      // 验证请求体
+      const validatedData = loginSchema.parse(request.body)
 
-      // 查找用户
-      const result = await pool.query(`
-        SELECT id, name, email, password_hash, is_active 
-        FROM users 
-        WHERE email = $1
-      `, [email])
-
-      if (result.rows.length === 0) {
-        logger.warn('Login failed: user not found', undefined, {
-          email
-        }, LogCategory.SECURITY)
-        
+      // 验证用户凭据
+      const user = await userService.verifyUserPassword(validatedData.email, validatedData.password)
+      if (!user) {
         return reply.code(401).send({
           success: false,
-          message: '邮箱或密码错误'
+          message: '邮箱或密码错误',
+          code: 'INVALID_CREDENTIALS'
         })
       }
 
-      const user = result.rows[0] as User
+      // 同步用户计划状态
+      await userPlanIntegrationService.syncUserPlanStatus(user.id)
 
-      // 检查用户是否激活
-      if (!user.is_active) {
-        logger.warn('Login failed: user not active', undefined, {
-          userId: user.id,
-          email
-        }, LogCategory.SECURITY)
-        
-        return reply.code(401).send({
-          success: false,
-          message: '账户已被禁用，请联系客服'
-        })
-      }
-
-      // 验证密码
-      const isPasswordValid = await bcrypt.compare(password, user.password_hash)
-      
-      if (!isPasswordValid) {
-        logger.warn('Login failed: invalid password', undefined, {
-          userId: user.id,
-          email
-        }, LogCategory.SECURITY)
-        
-        return reply.code(401).send({
-          success: false,
-          message: '邮箱或密码错误'
-        })
-      }
-
-      // 生成JWT token
-      const token = jwt.sign(
-        { 
-          userId: user.id.toString(), 
-          email: user.email,
-          role: 'user'
-        },
-        config.security.jwtSecret,
-        { expiresIn: config.security.jwtExpiresIn } as jwt.SignOptions
-      )
-
-      // 更新最后登录时间
-      await pool.query(
-        'UPDATE users SET last_login_at = NOW() WHERE id = $1',
-        [user.id]
-      )
-
-      logger.info('User logged in successfully', undefined, {
+      // 生成JWT令牌
+      const tokens = jwtService.generateTokenPair({
         userId: user.id,
         email: user.email,
-        name: user.name
-      }, LogCategory.USER)
+        plan: user.plan
+      })
 
+      // 返回用户信息和令牌
       return reply.send({
         success: true,
         message: '登录成功',
         data: {
           user: {
             id: user.id,
+            email: user.email,
             name: user.name,
-            email: user.email
+            plan: user.plan,
+            emailVerified: user.emailVerified,
+            image: user.image
           },
-          token
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken
         }
       })
 
     } catch (error) {
-      logger.error('Login error', error as Error, {
-        email: request.body.email
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          success: false,
+          message: '输入数据格式错误',
+          errors: error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+        })
+      }
+
+      logger.error('Login failed', error as Error, { 
+        email: (request.body as any)?.email 
       }, LogCategory.USER)
 
       return reply.code(500).send({
         success: false,
-        message: '登录失败，请稍后重试'
+        message: '登录失败'
+      })
+    }
+  })
+
+  /**
+   * Google OAuth 登录入口
+   * GET /api/auth/google
+   */
+  fastify.get('/auth/google', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // 生成随机state参数防止CSRF
+      const state = Math.random().toString(36).substring(2, 15)
+      
+      // 生成Google OAuth授权URL
+      const authUrl = googleOAuthService.generateAuthUrl(state)
+      
+      // 在session中保存state（这里简化处理，实际应用中可以使用Redis等）
+      // 可以考虑将state存储到数据库临时表中
+      
+      return reply.send({
+        success: true,
+        data: {
+          authUrl,
+          state
+        }
+      })
+
+    } catch (error) {
+      logger.error('Google OAuth init failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: 'Google登录初始化失败'
+      })
+    }
+  })
+
+  /**
+   * Google OAuth 回调
+   * POST /api/auth/callback/google
+   */
+  fastify.post('/auth/callback/google', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // 验证请求体
+      const validatedData = googleCallbackSchema.parse(request.body)
+
+      // 处理Google OAuth回调
+      const authResult = await googleOAuthService.handleGoogleAuth(validatedData.code)
+
+      // 如果是新用户，初始化付费计划
+      if (authResult.isNewUser) {
+        await userPlanIntegrationService.initializeUserPlan(authResult.user.id, 'free')
+      } else {
+        // 已有用户，同步计划状态
+        await userPlanIntegrationService.syncUserPlanStatus(authResult.user.id)
+      }
+
+      // 获取最新的用户信息（包含计划信息）
+      const userWithPlan = await userPlanIntegrationService.getUserWithPlan(authResult.user.id)
+      if (!userWithPlan) {
+        throw new Error('用户信息获取失败')
+      }
+
+      // 生成JWT令牌
+      const tokens = jwtService.generateTokenPair({
+        userId: userWithPlan.id,
+        email: userWithPlan.email,
+        plan: userWithPlan.plan
+      })
+
+      return reply.send({
+        success: true,
+        message: authResult.isNewUser ? 'Google账户注册成功' : 'Google登录成功',
+        data: {
+          user: {
+            id: userWithPlan.id,
+            email: userWithPlan.email,
+            name: userWithPlan.name,
+            plan: userWithPlan.plan,
+            emailVerified: userWithPlan.emailVerified,
+            image: userWithPlan.image
+          },
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          isNewUser: authResult.isNewUser
+        }
+      })
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          success: false,
+          message: '回调参数格式错误',
+          errors: error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+        })
+      }
+
+      logger.error('Google OAuth callback failed', error as Error, {}, LogCategory.USER)
+
+      return reply.code(500).send({
+        success: false,
+        message: error instanceof Error ? error.message : 'Google登录失败'
+      })
+    }
+  })
+
+  /**
+   * 刷新访问令牌
+   * POST /api/auth/refresh
+   */
+  fastify.post('/auth/refresh', { preHandler: refreshTokenMiddleware }, async (request: FastifyRequest, reply: FastifyReply) => {
+    // refreshTokenMiddleware 已经处理了所有逻辑
+    // 这里不需要额外处理，响应已经在中间件中发送
+  })
+
+  /**
+   * 登出
+   * POST /api/auth/logout
+   */
+  fastify.post('/auth/logout', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user
+      
+      // 这里可以添加令牌黑名单逻辑（如果需要的话）
+      // 目前JWT是无状态的，客户端删除令牌即可实现登出
+      
+      logger.info('User logged out', undefined, { userId: user?.id }, LogCategory.USER)
+
+      return reply.send({
+        success: true,
+        message: '登出成功'
+      })
+
+    } catch (error) {
+      logger.error('Logout failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '登出失败'
       })
     }
   })
@@ -308,100 +335,44 @@ export async function authRoutes(fastify: FastifyInstance) {
    * 获取当前用户信息
    * GET /api/auth/me
    */
-  fastify.get('/auth/me', {
-    preHandler: [
-      async (request: FastifyRequest, reply: FastifyReply) => {
-        try {
-          const token = request.headers.authorization?.replace('Bearer ', '')
-          
-          if (!token) {
-            return reply.code(401).send({
-              success: false,
-              message: '未提供认证令牌'
-            })
-          }
-
-          if (!config.security.jwtSecret) {
-            throw new Error('JWT secret not configured')
-          }
-
-          const decoded = jwt.verify(token, config.security.jwtSecret) as any
-          
-          // 查询用户信息
-          const result = await pool.query(`
-            SELECT id, name, email, "createdAt", is_active 
-            FROM users 
-            WHERE id = $1 AND is_active = true
-          `, [decoded.userId])
-
-          if (result.rows.length === 0) {
-            return reply.code(401).send({
-              success: false,
-              message: '用户不存在或已被禁用'
-            })
-          }
-
-          request.user = {
-            id: decoded.userId,
-            email: decoded.email,
-            role: decoded.role || 'user',
-            isActive: true
-          }
-          
-        } catch (error) {
-          return reply.code(401).send({
-            success: false,
-            message: '认证令牌无效'
-          })
-        }
-      }
-    ],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                email: { type: 'string' },
-                createdAt: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/auth/me', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const userId = request.user?.id
-      
-      const result = await pool.query(`
-        SELECT id, name, email, "createdAt" 
-        FROM users 
-        WHERE id = $1
-      `, [userId])
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          message: '用户未认证'
+        })
+      }
 
-      const user = result.rows[0]
+      // 获取完整的用户信息（包含订阅和配额信息）
+      const userOverview = await userPlanIntegrationService.getUserQuotaOverview(userId)
 
       return reply.send({
         success: true,
         data: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          createdAt: user.createdAt
+          user: {
+            id: userOverview.user.id,
+            email: userOverview.user.email,
+            name: userOverview.user.name,
+            plan: userOverview.user.plan,
+            emailVerified: userOverview.user.emailVerified,
+            image: userOverview.user.image,
+            createdAt: userOverview.user.createdAt,
+            updatedAt: userOverview.user.updatedAt
+          },
+          subscription: userOverview.subscription,
+          quotaPlan: userOverview.quotaPlan,
+          quotaUsages: userOverview.quotaUsages,
+          alerts: userOverview.alerts
         }
       })
 
     } catch (error) {
-      logger.error('Get user info error', error as Error, {
-        userId: request.user?.id
+      logger.error('Get current user failed', error as Error, { 
+        userId: request.user?.id 
       }, LogCategory.USER)
-
+      
       return reply.code(500).send({
         success: false,
         message: '获取用户信息失败'
@@ -410,20 +381,249 @@ export async function authRoutes(fastify: FastifyInstance) {
   })
 
   /**
-   * 用户登出
-   * POST /api/auth/logout
+   * 更新用户信息
+   * PUT /api/auth/profile
    */
-  fastify.post('/auth/logout', async (request: FastifyRequest, reply: FastifyReply) => {
-    // 注意：JWT是无状态的，实际的登出需要在客户端删除token
-    // 这里只是记录登出行为
-    logger.info('User logout', undefined, {
-      userId: request.user?.id,
-      userAgent: request.headers['user-agent']
-    }, LogCategory.USER)
+  fastify.put('/auth/profile', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          message: '用户未认证'
+        })
+      }
 
-    return reply.send({
-      success: true,
-      message: '登出成功'
-    })
+      const updateSchema = z.object({
+        name: z.string().min(1, '姓名不能为空').max(100, '姓名过长').optional(),
+        image: z.string().url('头像URL格式不正确').optional()
+      })
+
+      const validatedData = updateSchema.parse(request.body)
+
+      // 更新用户信息
+      const updatedUser = await userService.updateUser(userId, validatedData)
+      if (!updatedUser) {
+        return reply.code(404).send({
+          success: false,
+          message: '用户不存在'
+        })
+      }
+
+      return reply.send({
+        success: true,
+        message: '用户信息更新成功',
+        data: {
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            plan: updatedUser.plan,
+            emailVerified: updatedUser.emailVerified,
+            image: updatedUser.image
+          }
+        }
+      })
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          success: false,
+          message: '输入数据格式错误',
+          errors: error.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+        })
+      }
+
+      logger.error('Update profile failed', error as Error, { 
+        userId: request.user?.id 
+      }, LogCategory.USER)
+
+      return reply.code(500).send({
+        success: false,
+        message: '更新用户信息失败'
+      })
+    }
+  })
+
+  /**
+   * 健康检查
+   * GET /api/auth/health
+   */
+  fastify.get('/auth/health', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // 检查认证系统健康状态
+      const healthCheck = await userPlanIntegrationService.healthCheck()
+      
+      return reply.send({
+        success: true,
+        data: {
+          status: healthCheck.healthy ? 'healthy' : 'unhealthy',
+          timestamp: new Date().toISOString(),
+          service: 'auth-system',
+          version: '2.0.0',
+          details: healthCheck
+        }
+      })
+
+    } catch (error) {
+      logger.error('Auth health check failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '健康检查失败',
+        data: {
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          service: 'auth-system',
+          version: '2.0.0'
+        }
+      })
+    }
+  })
+
+  // 兼容性路由：保持与前端的现有API兼容
+  
+  /**
+   * 兼容性路由：Better Auth Google登录入口 (旧API)
+   * GET /api/auth/sign-in/google
+   */
+  fastify.get('/auth/sign-in/google', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // 重定向到新的Google OAuth端点
+      const state = Math.random().toString(36).substring(2, 15)
+      const authUrl = googleOAuthService.generateAuthUrl(state)
+      
+      // 直接重定向到Google授权页面（兼容旧的行为）
+      return reply.redirect(authUrl)
+      
+    } catch (error) {
+      logger.error('Google OAuth redirect failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: 'Google登录重定向失败'
+      })
+    }
+  })
+
+  /**
+   * 兼容性路由：Better Auth Google回调 (旧API)
+   * GET /api/auth/callback/google
+   */
+  fastify.get('/auth/callback/google', async (request: FastifyRequest, reply: FastifyReply) => {
+    // 简化：使用请求的Host头自动获取前端URL
+    const protocol = request.headers['x-forwarded-proto'] || (request.headers.host?.includes('localhost') ? 'http' : 'https')
+    const host = request.headers['x-forwarded-host'] || request.headers.host
+    const frontendUrl = process.env.FRONTEND_URL || `${protocol}://${host}`
+    
+    try {
+      const query = request.query as { code?: string; state?: string; error?: string }
+      
+      if (query.error) {
+        logger.warn('Google OAuth error', new Error(query.error || 'OAuth error'), {}, LogCategory.USER)
+        return reply.redirect(`${frontendUrl}/login?error=oauth_failed`)
+      }
+
+      if (!query.code) {
+        logger.warn('Google OAuth callback missing code', new Error('Missing authorization code'), {}, LogCategory.USER)
+        return reply.redirect(`${frontendUrl}/login?error=missing_code`)
+      }
+
+      // 处理Google OAuth回调
+      const authResult = await googleOAuthService.handleGoogleAuth(query.code)
+
+      // 如果是新用户，初始化付费计划
+      if (authResult.isNewUser) {
+        await userPlanIntegrationService.initializeUserPlan(authResult.user.id, 'free')
+      } else {
+        // 已有用户，同步计划状态
+        await userPlanIntegrationService.syncUserPlanStatus(authResult.user.id)
+      }
+
+      // 获取最新的用户信息（包含计划信息）
+      const userWithPlan = await userPlanIntegrationService.getUserWithPlan(authResult.user.id)
+      if (!userWithPlan) {
+        throw new Error('用户信息获取失败')
+      }
+
+      // 生成JWT令牌
+      const tokens = jwtService.generateTokenPair({
+        userId: userWithPlan.id,
+        email: userWithPlan.email,
+        plan: userWithPlan.plan
+      })
+
+      // 重定向到前端，传递令牌
+      const redirectUrl = `${frontendUrl}/login-success?token=${encodeURIComponent(tokens.accessToken)}&refresh=${encodeURIComponent(tokens.refreshToken)}&new=${authResult.isNewUser}`
+      return reply.redirect(redirectUrl)
+
+    } catch (error) {
+      logger.error('Google OAuth callback (GET) failed', error as Error, {}, LogCategory.USER)
+      return reply.redirect(`${frontendUrl}/login?error=oauth_callback_failed`)
+    }
+  })
+
+  /**
+   * 兼容性路由：获取用户信息 (旧API)
+   * GET /api/user/me
+   */
+  fastify.get('/user/me', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          message: '用户未认证'
+        })
+      }
+
+      const userOverview = await userPlanIntegrationService.getUserQuotaOverview(userId)
+
+      return reply.send({
+        success: true,
+        data: {
+          user: userOverview.user,
+          session: {
+            userId: userOverview.user.id,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000) // 15分钟后过期
+          }
+        }
+      })
+
+    } catch (error) {
+      logger.error('Get user me (compatibility) failed', error as Error, { 
+        userId: request.user?.id 
+      }, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '获取用户信息失败'
+      })
+    }
+  })
+
+  /**
+   * 兼容性路由：登出 (旧API)
+   * POST /api/auth/signout
+   */
+  fastify.post('/auth/signout', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = request.user
+      
+      logger.info('User signed out (compatibility)', undefined, { userId: user?.id }, LogCategory.USER)
+
+      return reply.send({
+        success: true,
+        message: '登出成功'
+      })
+
+    } catch (error) {
+      logger.error('Signout (compatibility) failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '登出失败'
+      })
+    }
   })
 }
