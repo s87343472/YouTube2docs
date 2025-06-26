@@ -298,7 +298,7 @@ class ConceptExplanationService {
       '数据科学': '数据科学是一个跨学科领域，结合统计学、计算机科学和领域知识，从大量数据中提取有价值的洞察和知识。'
     }
     
-    return fallbacks[concept] || `${concept}是一个重要的概念，建议查阅相关资料或咨询专业人士以获得更详细的解释。`
+    return fallbacks[concept as keyof typeof fallbacks] || `${concept}是一个重要的概念，建议查阅相关资料或咨询专业人士以获得更详细的解释。`
   }
   
   /**

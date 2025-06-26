@@ -156,3 +156,39 @@ Temporary Items
 *.html
 !index.html
 !template.html
+
+# Development and test files
+test-*.js
+test-*.ts
+*.test.html
+*_test.*
+test_*.*
+
+# Temporary and process files
+*.tmp.md
+*_temp.*
+temp_*.*
+latest_*.html
+new_*.html
+
+# Deployment packages
+*.tar.gz
+*.sha256
+*.zip
+
+# Report files
+*-report.txt
+*-summary.md
+*-status.md
+dependency-check-*
+security-test-*
+system-status-*
+
+# Deployment and script logs
+DEPLOYMENT_INSTRUCTIONS.txt
+CREATE_DEPLOYMENT_PACKAGE.md
+*_DEPLOYMENT_*.md
+API_REQUIREMENTS_UPDATE.md
+DEVELOPMENT_LOG.md
+FINAL_DEPLOYMENT_SUMMARY.md
+UPDATE_CHANGELOG.md

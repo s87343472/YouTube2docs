@@ -18,7 +18,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   isOpen,
   onClose,
   videoTitle,
-  videoProcessId,
+  videoProcessId: _videoProcessId, // Currently not used in component body
   onShare
 }) => {
   const [title, setTitle] = useState(videoTitle)

@@ -136,6 +136,10 @@ export interface ProcessVideoRequest {
     outputFormat?: 'concise' | 'standard' | 'detailed'
     includeTimestamps?: boolean
   }
+  metadata?: {
+    ipAddress?: string
+    userAgent?: string
+  }
 }
 
 export interface ProcessVideoResponse {

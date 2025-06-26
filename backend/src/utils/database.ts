@@ -2,6 +2,9 @@ import { pool, redis } from '../config/database'
 import fs from 'fs'
 import path from 'path'
 
+// Export pool for use in other services
+export { pool }
+
 export class DatabaseManager {
   /**
    * 运行数据库迁移
@@ -231,7 +234,7 @@ export class DatabaseManager {
         status: 'healthy',
         response_time: duration,
         connection_status: redis.status,
-        memory_usage: await redis.memory('usage').catch(() => 'unknown')
+        memory_usage: 'unknown' // Redis memory usage info disabled due to API incompatibility
       }
     } catch (error) {
       return {

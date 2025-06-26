@@ -301,6 +301,43 @@ export class AudioProcessor {
     }
   }
 
+  /**
+   * 清理指定时间之前的旧音频文件
+   */
+  static async cleanupOldAudioFiles(hoursOld: number = 24): Promise<number> {
+    try {
+      await this.ensureTempDir()
+      const files = await fs.readdir(this.TEMP_DIR)
+      const cutoffTime = Date.now() - (hoursOld * 60 * 60 * 1000)
+      
+      let deletedCount = 0
+      
+      for (const file of files) {
+        const filePath = path.join(this.TEMP_DIR, file)
+        try {
+          const stats = await fs.stat(filePath)
+          
+          // 删除超过指定时间的文件
+          if (stats.mtime.getTime() < cutoffTime) {
+            await fs.unlink(filePath)
+            deletedCount++
+          }
+        } catch (fileError) {
+          console.warn(`Failed to process file ${file}:`, fileError)
+        }
+      }
+      
+      if (deletedCount > 0) {
+        console.log(`🧹 Cleaned up ${deletedCount} old audio files (>${hoursOld}h old)`)
+      }
+      
+      return deletedCount
+    } catch (error) {
+      console.error('❌ Old audio files cleanup failed:', error)
+      return 0
+    }
+  }
+
 
 
   /**

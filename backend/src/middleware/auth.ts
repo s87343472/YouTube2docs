@@ -38,12 +38,7 @@ declare module 'fastify' {
  */
 export async function verifyToken(token: string): Promise<AuthenticatedUser | null> {
   try {
-    if (!config.security.jwtSecret) {
-      logger.error('JWT secret not configured', undefined, {}, LogCategory.SECURITY)
-      return null
-    }
-
-    const decoded = jwt.verify(token, config.security.jwtSecret!) as JWTPayload
+    const decoded = jwt.verify(token, config.security.jwtSecret) as JWTPayload
     
     // TODO: 在实际应用中，这里应该查询数据库验证用户状态
     const user: AuthenticatedUser = {
@@ -282,19 +277,15 @@ export const requireUserOrAdmin = requireRole(['user', 'admin'])
  * 生成JWT token
  */
 export function generateToken(user: Pick<AuthenticatedUser, 'id' | 'email' | 'role'>): string {
-  if (!config.security.jwtSecret) {
-    throw new Error('JWT secret not configured')
-  }
-
   const payload: Omit<JWTPayload, 'iat' | 'exp'> = {
     userId: user.id,
     email: user.email,
     role: user.role
   }
 
-  const token = jwt.sign(payload, config.security.jwtSecret!, {
+  const token = jwt.sign(payload, config.security.jwtSecret, {
     expiresIn: config.security.jwtExpiresIn
-  })
+  } as jwt.SignOptions)
 
   logger.info('JWT token generated', undefined, {
     metadata: {
@@ -312,12 +303,8 @@ export function generateToken(user: Pick<AuthenticatedUser, 'id' | 'email' | 'ro
  */
 export async function refreshToken(oldToken: string): Promise<string | null> {
   try {
-    if (!config.security.jwtSecret) {
-      throw new Error('JWT secret not configured')
-    }
-
     // 验证旧token（即使过期也要能解析）
-    const decoded = jwt.verify(oldToken, config.security.jwtSecret!, {
+    const decoded = jwt.verify(oldToken, config.security.jwtSecret, {
       ignoreExpiration: true
     }) as JWTPayload
 

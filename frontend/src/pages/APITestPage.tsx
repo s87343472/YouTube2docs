@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { VideoAPI, SystemAPI, APIUtils } from '../services/api'
-import type { HealthStatus, ProcessingStats } from '../services/api'
+// import type { HealthStatus, ProcessingStats } from '../services/api' // Types used internally
 
 export const APITestPage: React.FC = () => {
   const [testResults, setTestResults] = useState<Record<string, any>>({})

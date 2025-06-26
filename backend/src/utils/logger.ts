@@ -28,7 +28,7 @@ export enum LogCategory {
 }
 
 // Log context interface
-interface LogContext {
+export interface LogContext {
   requestId?: string
   userId?: string
   sessionId?: string
@@ -38,6 +38,17 @@ interface LogContext {
   statusCode?: number
   error?: Error
   metadata?: Record<string, any>
+  // 添加更多常用属性
+  ip?: string
+  email?: string
+  ipAddress?: string
+  reason?: string
+  operationType?: string
+  youtubeUrl?: string
+  processedCount?: number
+  cacheId?: string
+  deletedCount?: number
+  [key: string]: any // 允许任意属性
 }
 
 // Create log formats
@@ -195,28 +206,28 @@ class Logger {
   }
   
   // Convenience methods for different log levels - Updated signatures to match usage
-  debug(message: string, error?: Error, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
+  debug(message: string, error?: Error | any, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
     this.log(LogLevel.DEBUG, category, message, {
       ...context,
       error
     })
   }
   
-  info(message: string, error?: Error, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
+  info(message: string, error?: Error | any, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
     this.log(LogLevel.INFO, category, message, {
       ...context,
       error
     })
   }
   
-  warn(message: string, error?: Error, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
+  warn(message: string, error?: Error | any, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
     this.log(LogLevel.WARN, category, message, {
       ...context,
       error
     })
   }
   
-  error(message: string, error?: Error, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
+  error(message: string, error?: Error | any, context?: LogContext, category: LogCategory = LogCategory.SERVER) {
     this.log(LogLevel.ERROR, category, message, {
       ...context,
       error

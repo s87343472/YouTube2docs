@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { 
   User, 
   Eye, 
@@ -21,8 +21,10 @@ import {
   CheckCircle,
   AlertCircle,
   Loader,
-  FileText
+  FileText,
+  Crown
 } from 'lucide-react'
+import { QuotaDisplay } from '../components/QuotaDisplay'
 
 /**
  * 用户个人中心页面
@@ -70,7 +72,11 @@ interface UserTask {
 }
 
 export const UserCenterPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'tasks' | 'shares' | 'analytics' | 'settings'>('tasks')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'tasks' | 'shares' | 'analytics' | 'quota' | 'settings'>(() => {
+    const tab = searchParams.get('tab')
+    return (tab === 'quota' || tab === 'shares' || tab === 'analytics' || tab === 'settings') ? tab : 'tasks'
+  })
   const [userShares, setUserShares] = useState<UserShare[]>([])
   const [userTasks, setUserTasks] = useState<UserTask[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
@@ -264,6 +270,7 @@ export const UserCenterPage: React.FC = () => {
               { id: 'tasks', label: '处理任务', icon: FileText },
               { id: 'shares', label: '我的分享', icon: Share2 },
               { id: 'analytics', label: '数据统计', icon: BarChart3 },
+              { id: 'quota', label: '配额管理', icon: Crown },
               { id: 'settings', label: '账户设置', icon: Settings }
             ].map((tab) => (
               <button
@@ -616,6 +623,22 @@ export const UserCenterPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'quota' && (
+          <div className="max-w-4xl">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">配额管理</h2>
+              <p className="text-gray-600">
+                查看您的当前套餐配额使用情况，管理订阅和升级套餐
+              </p>
+            </div>
+            
+            <QuotaDisplay 
+              showUpgradePrompt={true}
+              className="max-w-none"
+            />
           </div>
         )}
 

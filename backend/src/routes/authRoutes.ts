@@ -5,6 +5,7 @@ import { config } from '../config'
 import { logger, LogCategory } from '../utils/logger'
 import { validators } from '../middleware/validation'
 import { DatabaseError, ValidationError, AuthenticationError } from '../errors'
+import { pool } from '../utils/database'
 
 /**
  * 用户认证相关的API路由
@@ -82,7 +83,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       }, LogCategory.USER)
 
       // 检查邮箱是否已存在
-      const existingUser = await fastify.pg.query(
+      const existingUser = await pool.query(
         'SELECT id FROM users WHERE email = $1',
         [email]
       )
@@ -103,7 +104,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const passwordHash = await bcrypt.hash(password, saltRounds)
 
       // 创建用户（使用自增ID）
-      const result = await fastify.pg.query(`
+      const result = await pool.query(`
         INSERT INTO users (name, email, password_hash, is_active)
         VALUES ($1, $2, $3, true)
         RETURNING id, name, email, "createdAt"
@@ -112,10 +113,6 @@ export async function authRoutes(fastify: FastifyInstance) {
       const newUser = result.rows[0]
 
       // 生成JWT token
-      if (!config.security.jwtSecret) {
-        throw new DatabaseError('JWT secret not configured')
-      }
-
       const token = jwt.sign(
         { 
           userId: newUser.id.toString(), 
@@ -123,10 +120,11 @@ export async function authRoutes(fastify: FastifyInstance) {
           role: 'user'
         },
         config.security.jwtSecret,
-        { expiresIn: config.security.jwtExpiresIn }
+        { expiresIn: config.security.jwtExpiresIn } as jwt.SignOptions
       )
 
-      logger.info('User registered successfully', newUser.id, {
+      logger.info('User registered successfully', undefined, {
+        userId: newUser.id,
         email: newUser.email,
         name: newUser.name
       }, LogCategory.USER)
@@ -145,8 +143,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       })
 
     } catch (error) {
-      logger.error('Registration error', undefined, {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      logger.error('Registration error', error as Error, {
         email: request.body.email
       }, LogCategory.USER)
 
@@ -212,7 +209,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       }, LogCategory.USER)
 
       // 查找用户
-      const result = await fastify.pg.query(`
+      const result = await pool.query(`
         SELECT id, name, email, password_hash, is_active 
         FROM users 
         WHERE email = $1
@@ -233,7 +230,8 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       // 检查用户是否激活
       if (!user.is_active) {
-        logger.warn('Login failed: user not active', user.id, {
+        logger.warn('Login failed: user not active', undefined, {
+          userId: user.id,
           email
         }, LogCategory.SECURITY)
         
@@ -247,7 +245,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       const isPasswordValid = await bcrypt.compare(password, user.password_hash)
       
       if (!isPasswordValid) {
-        logger.warn('Login failed: invalid password', user.id, {
+        logger.warn('Login failed: invalid password', undefined, {
+          userId: user.id,
           email
         }, LogCategory.SECURITY)
         
@@ -258,10 +257,6 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
 
       // 生成JWT token
-      if (!config.security.jwtSecret) {
-        throw new DatabaseError('JWT secret not configured')
-      }
-
       const token = jwt.sign(
         { 
           userId: user.id.toString(), 
@@ -269,16 +264,17 @@ export async function authRoutes(fastify: FastifyInstance) {
           role: 'user'
         },
         config.security.jwtSecret,
-        { expiresIn: config.security.jwtExpiresIn }
+        { expiresIn: config.security.jwtExpiresIn } as jwt.SignOptions
       )
 
       // 更新最后登录时间
-      await fastify.pg.query(
+      await pool.query(
         'UPDATE users SET last_login_at = NOW() WHERE id = $1',
         [user.id]
       )
 
-      logger.info('User logged in successfully', user.id, {
+      logger.info('User logged in successfully', undefined, {
+        userId: user.id,
         email: user.email,
         name: user.name
       }, LogCategory.USER)
@@ -297,8 +293,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       })
 
     } catch (error) {
-      logger.error('Login error', undefined, {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      logger.error('Login error', error as Error, {
         email: request.body.email
       }, LogCategory.USER)
 
@@ -333,7 +328,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           const decoded = jwt.verify(token, config.security.jwtSecret) as any
           
           // 查询用户信息
-          const result = await fastify.pg.query(`
+          const result = await pool.query(`
             SELECT id, name, email, "createdAt", is_active 
             FROM users 
             WHERE id = $1 AND is_active = true
@@ -384,7 +379,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     try {
       const userId = request.user?.id
       
-      const result = await fastify.pg.query(`
+      const result = await pool.query(`
         SELECT id, name, email, "createdAt" 
         FROM users 
         WHERE id = $1
@@ -403,8 +398,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       })
 
     } catch (error) {
-      logger.error('Get user info error', request.user?.id, {
-        error: error instanceof Error ? error.message : 'Unknown error'
+      logger.error('Get user info error', error as Error, {
+        userId: request.user?.id
       }, LogCategory.USER)
 
       return reply.code(500).send({
@@ -421,7 +416,8 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/auth/logout', async (request: FastifyRequest, reply: FastifyReply) => {
     // 注意：JWT是无状态的，实际的登出需要在客户端删除token
     // 这里只是记录登出行为
-    logger.info('User logout', request.user?.id, {
+    logger.info('User logout', undefined, {
+      userId: request.user?.id,
       userAgent: request.headers['user-agent']
     }, LogCategory.USER)
 

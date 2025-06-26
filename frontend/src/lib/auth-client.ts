@@ -19,10 +19,21 @@ export const {
   useSession,
   signIn,
   signUp,
-  signOut,
-  useActiveSession
+  signOut
+  // useActiveSession // Commented out - not available in current Better Auth version
 } = authClient
 
-// 类型导出
-export type Session = typeof authClient.$Infer.Session
-export type User = typeof authClient.$Infer.User
+// 类型导出 - temporarily disabled due to API changes
+// export type Session = typeof authClient.$Infer.Session
+// export type User = typeof authClient.$Infer.User
+
+// Temporary fallback types
+export interface User {
+  id: string
+  email: string
+  name?: string
+}
+
+export interface Session {
+  user: User
+}

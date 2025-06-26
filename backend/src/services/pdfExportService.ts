@@ -28,12 +28,12 @@ interface ExportResult {
 }
 
 export class PDFExportService {
-  private static browser: puppeteer.Browser | null = null
+  private static browser: any | null = null
   
   /**
    * 初始化浏览器实例
    */
-  private static async getBrowser(): Promise<puppeteer.Browser> {
+  private static async getBrowser(): Promise<any> {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
         headless: true,
@@ -62,7 +62,7 @@ export class PDFExportService {
     const startTime = Date.now()
     
     try {
-      logger.info('Starting PDF export', {
+      logger.info('Starting PDF export', undefined, {
         videoTitle: videoInfo.title,
         options
       }, LogCategory.SERVICE)
@@ -117,7 +117,7 @@ export class PDFExportService {
       const stats = await fs.stat(outputPath)
       const exportTime = Date.now() - startTime
       
-      logger.info('PDF export completed', {
+      logger.info('PDF export completed', undefined, {
         fileName,
         fileSize: stats.size,
         exportTime,
@@ -152,7 +152,7 @@ export class PDFExportService {
     const startTime = Date.now()
     
     try {
-      logger.info('Starting study cards PDF export', {
+      logger.info('Starting study cards PDF export', undefined, {
         videoTitle: videoInfo.title,
         cardsCount: studyCards.length
       }, LogCategory.SERVICE)
@@ -289,7 +289,7 @@ export class PDFExportService {
                 <div class="summary-grid">
                     <div class="summary-item">
                         <h3>学习时长</h3>
-                        <p>${learningMaterial.summary?.estimatedStudyTime || '45-60分钟'}</p>
+                        <p>${(learningMaterial.summary as any)?.estimatedStudyTime || '45-60分钟'}</p>
                     </div>
                     <div class="summary-item">
                         <h3>难度等级</h3>

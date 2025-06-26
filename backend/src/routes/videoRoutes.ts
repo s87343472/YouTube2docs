@@ -1,6 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { VideoProcessor } from '../services/videoProcessor'
+import { AbusePreventionService } from '../services/abusePreventionService'
 import { ProcessVideoRequest, LearningMaterial } from '../types'
+// import { 
+//   videoProcessingRateLimit, 
+//   videoProcessingCooldownMiddleware,
+//   anomalyDetectionMiddleware
+// } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
  * 视频处理相关的API路由
@@ -11,7 +17,11 @@ export async function videoRoutes(fastify: FastifyInstance) {
    * 提交视频处理请求
    */
   fastify.post('/videos/process', {
-    preHandler: [], // 暂时不要求认证，但可以提取用户信息
+    // preHandler: [
+    //   anomalyDetectionMiddleware,
+    //   videoProcessingRateLimit,
+    //   videoProcessingCooldownMiddleware
+    // ], // Temporarily disabled for compilation
     schema: {
       body: {
         type: 'object',
@@ -65,7 +75,20 @@ export async function videoRoutes(fastify: FastifyInstance) {
       // 提取用户ID（如果用户已登录）
       const userId = request.user?.id || 1 // 临时硬编码为用户1，实际部署时改为从认证中获取
       
-      const result = await VideoProcessor.processVideo(request.body, Number(userId))
+      // 添加请求元数据
+      const requestWithMetadata: ProcessVideoRequest = {
+        ...request.body,
+        metadata: {
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent']
+        }
+      }
+      
+      const result = await VideoProcessor.processVideo(requestWithMetadata, Number(userId))
+      
+      // 记录成功的操作
+      await AbusePreventionService.recordUserOperation(Number(userId), 'video_process')
+      await AbusePreventionService.recordVideoProcessing(Number(userId), request.body.youtubeUrl)
       
       reply.code(200).send(result)
     } catch (error) {

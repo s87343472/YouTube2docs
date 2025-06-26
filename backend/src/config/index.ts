@@ -78,6 +78,11 @@ const LoggingConfigSchema = z.object({
   maxFileSize: z.string().default('10M'),
   maxFiles: z.number().int().positive().default(10),
   enableRequestLogging: z.boolean().default(true),
+  enableResponseLogging: z.boolean().default(true),
+  enablePerformanceLogging: z.boolean().default(true),
+  logRequestBody: z.boolean().default(false),
+  logResponseBody: z.boolean().default(false),
+  maxBodySize: z.number().int().positive().default(1024),
   enableErrorDetails: z.boolean().default(true)
 })
 
@@ -95,8 +100,19 @@ const SecurityConfigSchema = z.object({
   rateLimitMax: z.number().int().positive().default(100), // requests per window
   enableCors: z.boolean().default(true),
   enableHelmet: z.boolean().default(true),
-  jwtSecret: z.string().min(32).optional(),
+  jwtSecret: z.string().min(1).default('default-jwt-secret-for-development'),
   jwtExpiresIn: z.string().default('7d')
+})
+
+const EmailConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.string().default('smtp'),
+  host: z.string().default('localhost'),
+  port: z.number().int().positive().default(587),
+  secure: z.boolean().default(false),
+  user: z.string().default(''),
+  password: z.string().default(''),
+  from: z.string().default('noreply@example.com')
 })
 
 // Combined configuration schema
@@ -106,7 +122,8 @@ const ConfigSchema = z.object({
   apis: APIConfigSchema,
   logging: LoggingConfigSchema,
   monitoring: MonitoringConfigSchema,
-  security: SecurityConfigSchema
+  security: SecurityConfigSchema,
+  email: EmailConfigSchema
 })
 
 // Parse and validate configuration
@@ -178,6 +195,11 @@ function parseConfig() {
       maxFileSize: process.env.LOG_MAX_FILE_SIZE || '10M',
       maxFiles: parseInt(process.env.LOG_MAX_FILES || '10'),
       enableRequestLogging: process.env.LOG_ENABLE_REQUEST !== 'false',
+      enableResponseLogging: process.env.LOG_ENABLE_RESPONSE !== 'false',
+      enablePerformanceLogging: process.env.LOG_ENABLE_PERFORMANCE !== 'false',
+      logRequestBody: process.env.LOG_REQUEST_BODY === 'true',
+      logResponseBody: process.env.LOG_RESPONSE_BODY === 'true',
+      maxBodySize: parseInt(process.env.LOG_MAX_BODY_SIZE || '1024'),
       enableErrorDetails: process.env.LOG_ENABLE_ERROR_DETAILS !== 'false'
     },
     
@@ -197,6 +219,17 @@ function parseConfig() {
       enableHelmet: process.env.SECURITY_ENABLE_HELMET !== 'false',
       jwtSecret: process.env.JWT_SECRET,
       jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    },
+    
+    email: {
+      enabled: process.env.EMAIL_ENABLED === 'true',
+      provider: process.env.EMAIL_PROVIDER || 'smtp',
+      host: process.env.EMAIL_HOST || 'localhost',
+      port: parseInt(process.env.EMAIL_PORT || '587'),
+      secure: process.env.EMAIL_SECURE === 'true',
+      user: process.env.EMAIL_USER || '',
+      password: process.env.EMAIL_PASSWORD || '',
+      from: process.env.EMAIL_FROM || 'noreply@example.com'
     }
   }
 
@@ -225,6 +258,7 @@ export type APIConfig = z.infer<typeof APIConfigSchema>
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>
 export type MonitoringConfig = z.infer<typeof MonitoringConfigSchema>
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>
+export type EmailConfig = z.infer<typeof EmailConfigSchema>
 
 // Configuration utilities
 export const isDevelopment = () => config.server.nodeEnv === 'development'

@@ -4,6 +4,8 @@ import { YouTubeService } from './youtubeService'
 import { AudioProcessor } from './audioProcessor'
 import { TranscriptionService } from './transcriptionService'
 import { ContentAnalyzer } from './contentAnalyzer'
+import { VideoCacheService } from './videoCacheService'
+import { NotificationService } from './notificationService'
 import { 
   VideoProcess, 
   ProcessingStep, 
@@ -76,6 +78,42 @@ export class VideoProcessor {
         throw new Error('Invalid YouTube URL format')
       }
 
+      // 🔍 首先检查缓存
+      const cachedResult = await VideoCacheService.checkCache(request.youtubeUrl)
+      if (cachedResult && userId) {
+        console.log(`📦 Cache hit for ${request.youtubeUrl}, using cached result`)
+        
+        // 生成处理ID用于一致性
+        const processId = uuidv4()
+        
+        // 创建处理记录（标记为缓存复用）
+        await this.createProcessRecord(processId, request.youtubeUrl, userId, {
+          fromCache: true,
+          cacheId: cachedResult.id
+        })
+        
+        // 更新缓存使用统计
+        await VideoCacheService.useCache(cachedResult.id, userId, {
+          processId,
+          ipAddress: request.metadata?.ipAddress,
+          userAgent: request.metadata?.userAgent
+        })
+        
+        // 直接设置为完成状态并保存结果
+        await this.updateProcessStatus(processId, 'completed', 100, 'finalize')
+        await this.saveProcessingResult(processId, cachedResult.resultData)
+        
+        return {
+          processId,
+          status: 'accepted',
+          estimatedTime: 5, // 缓存复用只需几秒
+          message: '发现相同视频的处理结果，正在为您快速生成...'
+        }
+      }
+
+      // 🚀 缓存未命中，执行正常处理流程
+      console.log(`🔄 Cache miss for ${request.youtubeUrl}, starting full processing`)
+      
       // 生成处理ID
       const processId = uuidv4()
       
@@ -89,7 +127,7 @@ export class VideoProcessor {
       await this.updateProcessStatus(processId, 'processing', 0, 'extract_info')
       
       // 异步开始处理
-      this.executeProcessingPipeline(processId, request).catch(error => {
+      this.executeProcessingPipeline(processId, request, userId).catch(error => {
         console.error(`❌ Processing pipeline failed for ${processId}:`, error)
         this.updateProcessStatus(processId, 'failed', 0, 'extract_info', error instanceof Error ? error.message : String(error))
       })
@@ -112,16 +150,18 @@ export class VideoProcessor {
    */
   private static async executeProcessingPipeline(
     processId: string, 
-    request: ProcessVideoRequest
+    request: ProcessVideoRequest,
+    userId?: number
   ): Promise<void> {
     const startTime = Date.now()
+    let videoInfo: VideoInfo | null = null
     
     try {
       console.log(`🚀 Executing processing pipeline for ${processId}`)
 
       // 步骤1: 提取视频信息
       await this.updateStepStatus(processId, 'extract_info', 'processing')
-      const videoInfo = await YouTubeService.getDetailedVideoInfo(request.youtubeUrl)
+      videoInfo = await YouTubeService.getDetailedVideoInfo(request.youtubeUrl)
       await this.updateStepStatus(processId, 'extract_info', 'completed')
       await this.updateProcessStatus(processId, 'processing', 15, 'extract_audio')
 
@@ -176,14 +216,88 @@ export class VideoProcessor {
       await this.updateProcessStatus(processId, 'completed', 100, 'finalize')
       await this.updateProcessingTime(processId, processingTime)
 
+      // 💾 保存到缓存（如果有用户ID）
+      if (userId) {
+        try {
+          // 估算处理成本（基于Groq定价 $0.04/小时）
+          // Parse duration string to seconds first
+          const durationSeconds = this.parseDurationToSeconds(videoInfo.duration || '0')
+          const videoDurationHours = durationSeconds / 3600
+          const processingCost = videoDurationHours * 0.04
+          
+          await VideoCacheService.saveToCache(request.youtubeUrl, learningMaterial, userId, {
+            videoTitle: videoInfo.title,
+            videoDuration: durationSeconds,
+            videoChannel: videoInfo.channel,
+            processingCost,
+            processId,
+            ipAddress: request.metadata?.ipAddress,
+            userAgent: request.metadata?.userAgent
+          })
+          
+          console.log(`📦 Processing result cached for ${request.youtubeUrl}`)
+        } catch (cacheError) {
+          console.error('Failed to cache processing result:', cacheError)
+          // 缓存失败不应该影响主流程
+        }
+      }
+
       // 清理临时文件
       await AudioProcessor.cleanupTempFiles(videoId)
 
       console.log(`✅ Processing pipeline completed for ${processId} in ${processingTime}s`)
 
+      // 📧 发送任务完成通知
+      if (userId) {
+        try {
+          const userInfo = await this.getUserInfo(userId)
+          if (userInfo) {
+            await NotificationService.sendTaskCompletedNotification(
+              userId,
+              userInfo.email,
+              {
+                videoTitle: videoInfo.title,
+                videoChannel: videoInfo.channel,
+                processingTime,
+                completedAt: new Date().toLocaleString('zh-CN'),
+                resultUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/result/${processId}`
+              }
+            )
+          }
+        } catch (notificationError) {
+          console.error('Failed to send completion notification:', notificationError)
+          // 通知失败不应该影响主流程
+        }
+      }
+
     } catch (error) {
       console.error(`❌ Processing pipeline failed for ${processId}:`, error)
       await this.updateProcessStatus(processId, 'failed', 0, 'extract_info', error instanceof Error ? error.message : String(error))
+      
+      // 📧 发送任务失败通知
+      if (userId) {
+        try {
+          const userInfo = await this.getUserInfo(userId)
+          if (userInfo) {
+            await NotificationService.sendTaskFailedNotification(
+              userId,
+              userInfo.email,
+              {
+                videoTitle: videoInfo?.title || 'Unknown Video',
+                youtubeUrl: request.youtubeUrl,
+                failedAt: new Date().toLocaleString('zh-CN'),
+                errorMessage: error instanceof Error ? error.message : String(error),
+                retryUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/process?url=${encodeURIComponent(request.youtubeUrl)}`,
+                supportUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/support`
+              }
+            )
+          }
+        } catch (notificationError) {
+          console.error('Failed to send failure notification:', notificationError)
+          // 通知失败不应该影响主流程
+        }
+      }
+      
       throw error
     }
   }
@@ -315,13 +429,19 @@ export class VideoProcessor {
   private static async createProcessRecord(
     processId: string, 
     youtubeUrl: string, 
-    userId?: number
+    userId?: number,
+    metadata?: {
+      fromCache?: boolean
+      cacheId?: number
+    }
   ): Promise<void> {
+    const metadataJson = metadata ? JSON.stringify(metadata) : null
+    
     await pool.query(`
       INSERT INTO video_processes (
-        id, user_id, youtube_url, status, progress, "createdAt"
-      ) VALUES ($1, $2, $3, 'pending', 0, CURRENT_TIMESTAMP)
-    `, [processId, userId || null, youtubeUrl])
+        id, user_id, youtube_url, status, progress, metadata, "createdAt"
+      ) VALUES ($1, $2, $3, 'pending', 0, $4, CURRENT_TIMESTAMP)
+    `, [processId, userId || null, youtubeUrl, metadataJson])
   }
 
   /**
@@ -471,6 +591,27 @@ export class VideoProcessor {
     } catch (error) {
       console.error('Failed to cleanup expired processes:', error)
       return 0
+    }
+  }
+
+  /**
+   * 获取用户信息
+   */
+  private static async getUserInfo(userId: number): Promise<{ email: string } | null> {
+    try {
+      const result = await pool.query(
+        'SELECT email FROM users WHERE id = $1',
+        [userId]
+      )
+      
+      if (result.rows.length === 0) {
+        return null
+      }
+      
+      return { email: result.rows[0].email }
+    } catch (error) {
+      console.error('Failed to get user info:', error)
+      return null
     }
   }
 

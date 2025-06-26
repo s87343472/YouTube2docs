@@ -58,7 +58,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
   height = 600,
   width = 800
 }) => {
-  const graphRef = useRef<any>()
+  const graphRef = useRef<any>(null)
   const [selectedNode, setSelectedNode] = useState<KnowledgeNode | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [explanation, setExplanation] = useState<string>('')
@@ -93,7 +93,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
   }
 
   // 处理节点点击
-  const handleNodeClick = useCallback(async (node: KnowledgeNode, event?: MouseEvent) => {
+  const handleNodeClick = useCallback(async (node: KnowledgeNode, _event?: MouseEvent) => {
     console.log('Node clicked:', node)
     setSelectedNode(node)
     
@@ -121,7 +121,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
   }, [onNodeClick, onRequestExplanation])
 
   // 处理节点悬停
-  const handleNodeHover = useCallback((node: KnowledgeNode | null, prevNode?: KnowledgeNode) => {
+  const handleNodeHover = useCallback((node: KnowledgeNode | null, _prevNode?: KnowledgeNode) => {
     if (node) {
       setTooltipContent(`${node.name} (${node.type})`)
       setShowTooltip(true)
@@ -297,7 +297,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
             ctx.fill()
           }}
           onNodeClick={handleNodeClick}
-          onNodeHover={handleNodeHover}
+          onNodeHover={(node, prevNode) => handleNodeHover(node as KnowledgeNode | null, prevNode as KnowledgeNode | undefined)}
           linkColor={link => getLinkColor(link as KnowledgeLink)}
           linkWidth={link => (link as KnowledgeLink).strength * 2}
           linkDirectionalArrowLength={6}
