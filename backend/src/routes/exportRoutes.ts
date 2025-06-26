@@ -31,7 +31,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/export/learning-material', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {
@@ -217,7 +217,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
    */
   fastify.post('/export/study-cards', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       rateLimitMiddleware.moderate
     ],
     schema: {
@@ -367,7 +367,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
    */
   fastify.get('/export/history', {
     preHandler: [
-      authMiddleware.optional,
+      optionalAuth,
       validators.pagination
     ],
     schema: {
@@ -457,7 +457,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
    * DELETE /api/export/cleanup
    */
   fastify.delete('/export/cleanup', {
-    preHandler: [authMiddleware.required]
+    preHandler: [requireAuth]
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       logger.info('Starting export files cleanup', {

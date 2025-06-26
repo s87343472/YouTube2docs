@@ -41,7 +41,7 @@ export function validateRequest<
       if (schemas.body) {
         const result = schemas.body.safeParse(request.body)
         if (!result.success) {
-          return handleValidationError(reply, result.error, 'body', request.requestId)
+          return handleValidationError(reply, result.error, 'body')
         }
         // Replace request body with validated and potentially transformed data
         request.body = result.data
@@ -51,7 +51,7 @@ export function validateRequest<
       if (schemas.query) {
         const result = schemas.query.safeParse(request.query)
         if (!result.success) {
-          return handleValidationError(reply, result.error, 'query', request.requestId)
+          return handleValidationError(reply, result.error, 'query')
         }
         request.query = result.data
       }
@@ -60,7 +60,7 @@ export function validateRequest<
       if (schemas.params) {
         const result = schemas.params.safeParse(request.params)
         if (!result.success) {
-          return handleValidationError(reply, result.error, 'params', request.requestId)
+          return handleValidationError(reply, result.error, 'params')
         }
         request.params = result.data
       }
@@ -69,7 +69,7 @@ export function validateRequest<
       if (schemas.headers) {
         const result = schemas.headers.safeParse(request.headers)
         if (!result.success) {
-          return handleValidationError(reply, result.error, 'headers', request.requestId)
+          return handleValidationError(reply, result.error, 'headers')
         }
         // Note: We don't replace headers as they are read-only
       }
@@ -106,8 +106,7 @@ export function validateRequest<
 function handleValidationError(
   reply: FastifyReply,
   error: ZodError,
-  source: string,
-  requestId?: string
+  source: string
 ): void {
   const details = error.errors.map(err => ({
     field: `${source}.${err.path.join('.')}`,

@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { ShareService } from '../services/shareService'
 import { logger, LogCategory } from '../utils/logger'
 import { validators } from '../middleware/validation'
-import { authMiddleware } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/authMiddleware'
 import { pool } from '../config/database'
 
 /**
@@ -27,7 +27,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * GET /api/user/analytics
    */
   fastify.get('/user/analytics', {
-    preHandler: [authMiddleware.optional], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth], // 暂时设为可选，实际部署时改为required
     schema: {
       response: {
         200: {
@@ -202,7 +202,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * GET /api/user/profile
    */
   fastify.get('/user/profile', {
-    preHandler: [authMiddleware.optional], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth], // 暂时设为可选，实际部署时改为required
     schema: {
       response: {
         200: {
@@ -334,7 +334,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * PUT /api/user/profile
    */
   fastify.put('/user/profile', {
-    preHandler: [authMiddleware.optional], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth], // 暂时设为可选，实际部署时改为required
     schema: {
       body: {
         type: 'object',
@@ -447,7 +447,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * GET /api/user/activity
    */
   fastify.get('/user/activity', {
-    preHandler: [authMiddleware.optional, validators.pagination], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth, validators.pagination], // 暂时设为可选，实际部署时改为required
     schema: {
       querystring: {
         type: 'object',
@@ -581,7 +581,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * GET /api/user/stats/summary
    */
   fastify.get('/user/stats/summary', {
-    preHandler: [authMiddleware.optional], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth], // 暂时设为可选，实际部署时改为required
     schema: {
       response: {
         200: {
@@ -708,7 +708,7 @@ export async function userRoutes(fastify: FastifyInstance) {
    * GET /api/user/tasks
    */
   fastify.get('/user/tasks', {
-    preHandler: [authMiddleware.optional], // 暂时设为可选，实际部署时改为required
+    preHandler: [optionalAuth], // 暂时设为可选，实际部署时改为required
     schema: {
       querystring: {
         type: 'object',

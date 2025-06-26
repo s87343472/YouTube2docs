@@ -25,8 +25,8 @@ const DatabaseConfigSchema = z.object({
   postgresql: z.object({
     host: z.string().default('localhost'),
     port: z.number().int().min(1).max(65535).default(5432),
-    database: z.string().min(1),
-    username: z.string().min(1),
+    database: z.string().min(1).default('youtube_learning'),
+    username: z.string().min(1).default('sagasu'),
     password: z.string().default(''),
     maxConnections: z.number().int().positive().default(20),
     connectionTimeout: z.number().int().positive().default(30000),
@@ -272,7 +272,7 @@ export const validateConfig = () => {
   // Check required environment variables
   const requiredVars = [
     'POSTGRES_DB',
-    'POSTGRES_USER', 
+    'POSTGRES_USER',
     'POSTGRES_PASSWORD',
     'GROQ_API_KEY',
     'GEMINI_API_KEY'

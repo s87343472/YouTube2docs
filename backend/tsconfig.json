@@ -35,6 +35,8 @@
     "dist",
     "tests",
     "src/routes/conceptRoutes.ts",
-    "src/routes/exportRoutes.ts"
+    "src/routes/exportRoutes.ts",
+    "src/routes/quotaRoutes.ts",
+    "src/routes/cacheRoutes.ts"
   ]
 }

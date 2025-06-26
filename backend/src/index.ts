@@ -192,10 +192,10 @@ async function registerRoutes() {
     // await fastify.register(exportRoutes)
     // logger.info('Export routes registered', undefined, {}, LogCategory.SERVER)
     
-    // Import and register Better Auth routes
-    const { betterAuthRoutes } = await import('./routes/betterAuthRoutes')
-    await fastify.register(betterAuthRoutes)
-    logger.info('Better Auth routes registered', undefined, {}, LogCategory.SERVER)
+    // Import and register new Auth routes (replaces Better Auth)
+    const { authRoutes } = await import('./routes/authRoutes')
+    await fastify.register(authRoutes)
+    logger.info('New authentication routes registered', undefined, {}, LogCategory.SERVER)
     
     // Import and register quota routes
     const { quotaRoutes } = await import('./routes/quotaRoutes')
@@ -248,6 +248,28 @@ async function start() {
     }, LogCategory.SERVER)
 
     await registerPlugins()
+    
+    // Initialize database and run authentication migrations
+    try {
+      const { databaseAdapter } = await import('./services/databaseAdapter')
+      logger.info('Running authentication database migrations...', undefined, {}, LogCategory.SERVER)
+      
+      const migrationResult = await databaseAdapter.executeAuthMigrations()
+      if (migrationResult.success) {
+        logger.info('Authentication database migrations completed', undefined, {
+          migrationsExecuted: migrationResult.migrationsExecuted,
+          newTablesCreated: migrationResult.newTablesCreated.length,
+          existingTablesModified: migrationResult.existingTablesModified.length
+        }, LogCategory.SERVER)
+      } else {
+        logger.error('Authentication database migrations failed', undefined, {
+          errors: migrationResult.errors
+        }, LogCategory.SERVER)
+      }
+    } catch (migrationError) {
+      logger.warn('Database migration check failed, continuing startup', migrationError as Error, {}, LogCategory.SERVER)
+    }
+    
     await registerRoutes()
 
     await fastify.listen({ 
