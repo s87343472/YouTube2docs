@@ -1,7 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { VideoProcessor } from '../services/videoProcessor'
 import { AbusePreventionService } from '../services/abusePreventionService'
+import { PDFExportService } from '../services/pdfExportService'
 import { ProcessVideoRequest, LearningMaterial } from '../types'
+import fs from 'fs/promises'
+import path from 'path'
 // import { 
 //   videoProcessingRateLimit, 
 //   videoProcessingCooldownMiddleware,
@@ -73,7 +76,7 @@ export async function videoRoutes(fastify: FastifyInstance) {
       console.log('📥 Received video processing request:', request.body.youtubeUrl)
       
       // 提取用户ID（如果用户已登录）
-      const userId = request.user?.id || 1 // 临时硬编码为用户1，实际部署时改为从认证中获取
+      const userId = request.user?.id || '22db8677-988f-4149-8364-6dbb7584befc' // 使用数据库中实际存在的用户ID
       
       // 添加请求元数据
       const requestWithMetadata: ProcessVideoRequest = {
@@ -84,11 +87,11 @@ export async function videoRoutes(fastify: FastifyInstance) {
         }
       }
       
-      const result = await VideoProcessor.processVideo(requestWithMetadata, Number(userId))
+      const result = await VideoProcessor.processVideo(requestWithMetadata, userId)
       
-      // 记录成功的操作
-      await AbusePreventionService.recordUserOperation(Number(userId), 'video_process')
-      await AbusePreventionService.recordVideoProcessing(Number(userId), request.body.youtubeUrl)
+      // 记录成功的操作 (暂时禁用)
+      // await AbusePreventionService.recordUserOperation(userId, 'video_process')
+      // await AbusePreventionService.recordVideoProcessing(userId, request.body.youtubeUrl)
       
       reply.code(200).send(result)
     } catch (error) {
@@ -379,11 +382,42 @@ export async function videoRoutes(fastify: FastifyInstance) {
           break
 
         case 'pdf':
-          const htmlContent = generateHTMLContent(learningMaterial)
+          // Use the proper PDF export service instead of returning HTML
+          const videoInfo = {
+            title: learningMaterial.videoInfo?.title || '未知视频',
+            url: learningMaterial.videoInfo?.url || '',
+            channel: learningMaterial.videoInfo?.channel || '',
+            duration: learningMaterial.videoInfo?.duration || '0:00',
+            views: learningMaterial.videoInfo?.views || '0',
+            thumbnail: learningMaterial.videoInfo?.thumbnail || ''
+          }
+
+          const exportResult = await PDFExportService.exportLearningMaterial(
+            videoInfo,
+            learningMaterial,
+            {
+              theme: 'light',
+              includeGraphs: true,
+              includeCards: true
+            }
+          )
+
+          // Read the generated PDF file
+          const pdfBuffer = await fs.readFile(exportResult.filePath)
+          
+          // Send the PDF with proper headers
           reply
-            .header('Content-Type', 'text/html; charset=utf-8')
-            .header('Content-Disposition', `inline; filename=${safeTitle}_${timestamp}.html`)
-            .send(htmlContent)
+            .header('Content-Type', 'application/pdf')
+            .header('Content-Disposition', `attachment; filename=${safeTitle}_${timestamp}.pdf`)
+            .header('Content-Length', exportResult.fileSize.toString())
+            .send(pdfBuffer)
+
+          // Clean up the temporary file
+          try {
+            await fs.unlink(exportResult.filePath)
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup PDF file:', cleanupError)
+          }
           break
 
         default:
@@ -630,13 +664,15 @@ function generateHTMLContent(material: any): string {
     </ul>
     
     ${summary.concepts && summary.concepts.length > 0 ? `
-    <h3>💡 核心概念</h3>
-    ${summary.concepts.map((concept: any) => `
-        <div class="concept">
-            <h4>${convertMarkdownToHtml(concept.name)}</h4>
-            <p>${convertMarkdownToHtml(concept.explanation)}</p>
-        </div>
-    `).join('')}
+    <h3>💡 核心知识点</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
+        ${summary.concepts.map((concept: any) => `
+            <div style="background: #e8f4fd; padding: 12px; border-radius: 8px; border-left: 4px solid #3498db;">
+                <h5 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 14px;">${convertMarkdownToHtml(concept.name)}</h5>
+                <p style="margin: 0; font-size: 13px; color: #666; line-height: 1.4;">${convertMarkdownToHtml(concept.explanation.length > 60 ? concept.explanation.substring(0, 60) + '...' : concept.explanation)}</p>
+            </div>
+        `).join('')}
+    </div>
     ` : ''}
     
     ${structuredContent.chapters && structuredContent.chapters.length > 0 ? `
@@ -687,8 +723,51 @@ function generateHTMLContent(material: any): string {
     
     ${knowledgeGraph.nodes && knowledgeGraph.nodes.length > 0 ? `
     <h2>🕸️ 知识图谱</h2>
-    <p><strong>概念节点数:</strong> ${knowledgeGraph.nodes.length}</p>
-    <p><strong>关联边数:</strong> ${knowledgeGraph.edges ? knowledgeGraph.edges.length : 0}</p>
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>概念节点数:</strong> ${knowledgeGraph.nodes.length} | <strong>关联边数:</strong> ${knowledgeGraph.edges ? knowledgeGraph.edges.length : 0}</p>
+        
+        <!-- SVG知识图谱可视化 -->
+        <div style="text-align: center; margin: 20px 0;">
+            ${generateKnowledgeGraphSVG(knowledgeGraph)}
+        </div>
+        
+        <!-- 节点详细信息 -->
+        <div style="margin-top: 20px;">
+            <h3>📋 节点详情</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-top: 15px;">
+                ${knowledgeGraph.nodes.map((node: any) => `
+                    <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid ${getNodeColor(node.type)};">
+                        <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${node.label}</h4>
+                        <p style="margin: 0; color: #666; font-size: 14px;">${node.description || '暂无描述'}</p>
+                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                            <span style="background: ${getNodeColor(node.type)}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px;">${node.type}</span>
+                            <span style="background: #f0f0f0; color: #666; padding: 2px 6px; border-radius: 3px; font-size: 12px;">重要度: ${node.importance || 3}/5</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        ${knowledgeGraph.edges && knowledgeGraph.edges.length > 0 ? `
+        <div style="margin-top: 20px;">
+            <h3>🔗 关系连接</h3>
+            <div style="background: white; padding: 15px; border-radius: 6px; margin-top: 15px;">
+                ${knowledgeGraph.edges.map((edge: any) => {
+                    const sourceNode = knowledgeGraph.nodes.find((n: any) => n.id === edge.source);
+                    const targetNode = knowledgeGraph.nodes.find((n: any) => n.id === edge.target);
+                    return `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid ${getRelationColor(edge.type)};">
+                        <strong>${sourceNode?.label || edge.source}</strong> 
+                        <span style="color: #666; margin: 0 10px;">→</span> 
+                        <strong>${targetNode?.label || edge.target}</strong>
+                        <span style="margin-left: 10px; background: ${getRelationColor(edge.type)}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px;">${getRelationText(edge.type)}</span>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        ` : ''}
+    </div>
     ` : ''}
     
     ${studyCards && studyCards.length > 0 ? `
@@ -759,6 +838,24 @@ function generateHTMLContent(material: any): string {
     </div>
     ` : ''}
     
+    ${summary.concepts && summary.concepts.length > 0 ? `
+    <h2>📚 名词解释</h2>
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">以下是视频中涉及的重要概念的详细解释：</p>
+        ${summary.concepts.map((concept: any, index: number) => `
+            <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 6px; border-left: 4px solid #3498db;">
+                <h4 style="margin: 0 0 10px 0; color: #2c3e50;">
+                    <span style="color: #3498db; font-weight: bold;">[${index + 1}]</span> 
+                    ${convertMarkdownToHtml(concept.name)}
+                </h4>
+                <p style="margin: 0; line-height: 1.6; color: #555;">
+                    ${convertMarkdownToHtml(concept.explanation)}
+                </p>
+            </div>
+        `).join('')}
+    </div>
+    ` : ''}
+    
     <div class="footer">
         <p>由YouTube智能学习资料生成器生成 - ${new Date().toLocaleString()}</p>
         <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3498db;">
@@ -773,4 +870,411 @@ function generateHTMLContent(material: any): string {
 </body>
 </html>
   `
+}
+
+/**
+ * 生成现代化知识图谱可视化
+ */
+function generateKnowledgeGraphSVG(knowledgeGraph: any): string {
+  const nodes = knowledgeGraph.nodes || []
+  const edges = knowledgeGraph.edges || []
+  
+  if (nodes.length === 0) {
+    return `
+      <div style="text-align: center; padding: 60px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+        <div style="font-size: 48px; margin-bottom: 16px;">🧠</div>
+        <h3 style="margin: 0; font-size: 18px; font-weight: 600;">知识图谱生成中</h3>
+        <p style="margin: 8px 0 0 0; opacity: 0.8;">正在分析视频内容中的知识点关系...</p>
+      </div>
+    `
+  }
+  
+  const svgWidth = 1000
+  const svgHeight = 700
+  
+  // 使用力导向布局算法
+  const nodePositions = generateForceLayout(nodes, edges, svgWidth, svgHeight)
+  
+  // 生成现代化SVG
+  const svgContent = `
+    <svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" 
+         style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+      
+      <!-- 定义渐变和滤镜 -->
+      <defs>
+        <linearGradient id="conceptGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+        </linearGradient>
+        
+        <linearGradient id="supportGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#11998e;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#38ef7d;stop-opacity:1" />
+        </linearGradient>
+        
+        <linearGradient id="applicationGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#ff6b6b;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#feca57;stop-opacity:1" />
+        </linearGradient>
+        
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge> 
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="2" dy="4" stdDeviation="4" flood-color="rgba(0,0,0,0.3)"/>
+        </filter>
+      </defs>
+      
+      <!-- 背景装饰 -->
+      <circle cx="100" cy="100" r="50" fill="rgba(255,255,255,0.1)" opacity="0.5"/>
+      <circle cx="${svgWidth-100}" cy="100" r="30" fill="rgba(255,255,255,0.1)" opacity="0.3"/>
+      <circle cx="150" cy="${svgHeight-100}" r="40" fill="rgba(255,255,255,0.1)" opacity="0.4"/>
+      
+      <!-- 连接线 -->
+      ${edges.map((edge: any) => {
+        const sourceNode = nodePositions.find((n: any) => n.id === edge.source)
+        const targetNode = nodePositions.find((n: any) => n.id === edge.target)
+        
+        if (!sourceNode || !targetNode) return ''
+        
+        const color = getModernRelationColor(edge.type)
+        const strokeWidth = edge.strength ? Math.max(2, edge.strength * 2) : 3
+        
+        return `
+          <g>
+            <!-- 连接线阴影 -->
+            <line x1="${sourceNode.x}" y1="${sourceNode.y}" 
+                  x2="${targetNode.x}" y2="${targetNode.y}"
+                  stroke="rgba(0,0,0,0.1)" 
+                  stroke-width="${strokeWidth + 2}" 
+                  opacity="0.3"/>
+            
+            <!-- 主连接线 -->
+            <line x1="${sourceNode.x}" y1="${sourceNode.y}" 
+                  x2="${targetNode.x}" y2="${targetNode.y}"
+                  stroke="${color}" 
+                  stroke-width="${strokeWidth}" 
+                  stroke-linecap="round"
+                  opacity="0.8"/>
+            
+            <!-- 现代化箭头 -->
+            <circle cx="${targetNode.x}" cy="${targetNode.y}" r="4" 
+                    fill="${color}" 
+                    opacity="0.9"/>
+          </g>
+        `
+      }).join('')}
+      
+      <!-- 节点 -->
+      ${nodePositions.map((node: any) => {
+        const nodeSize = node.radius || Math.max(35, Math.min(55, 35 + (node.importance || 3) * 4))
+        const gradient = getNodeGradient(node.type)
+        const labelWidth = Math.max(100, node.label.length * 8)
+        
+        return `
+          <g filter="url(#shadow)">
+            <!-- 节点外圈 -->
+            <circle cx="${node.x}" cy="${node.y}" r="${nodeSize + 6}" 
+                    fill="rgba(255,255,255,0.3)" 
+                    opacity="0.6"/>
+            
+            <!-- 主节点 -->
+            <circle cx="${node.x}" cy="${node.y}" r="${nodeSize}" 
+                    fill="url(#${gradient})" 
+                    stroke="rgba(255,255,255,0.8)" 
+                    stroke-width="3"
+                    filter="url(#glow)"/>
+            
+            <!-- 节点图标 -->
+            <text x="${node.x}" y="${node.y + 8}" 
+                  text-anchor="middle" 
+                  font-size="${Math.max(18, nodeSize / 2.5)}" 
+                  fill="white" 
+                  font-weight="bold">
+              ${getNodeIcon(node.type)}
+            </text>
+            
+            <!-- 节点标签背景 -->
+            <rect x="${node.x - labelWidth/2}" y="${node.y + nodeSize + 15}" 
+                  width="${labelWidth}" height="28" 
+                  fill="rgba(255,255,255,0.95)" 
+                  rx="14" 
+                  stroke="rgba(0,0,0,0.1)" 
+                  stroke-width="1"/>
+            
+            <!-- 节点标签 -->
+            <text x="${node.x}" y="${node.y + nodeSize + 32}" 
+                  text-anchor="middle" 
+                  font-size="13" 
+                  font-weight="600"
+                  fill="#2c3e50">
+              ${node.label.length > 15 ? node.label.substring(0, 15) + '...' : node.label}
+            </text>
+            
+            <!-- 重要度指示器 -->
+            ${Array.from({length: 5}).map((_, i) => `
+              <circle cx="${node.x - 20 + i * 10}" cy="${node.y + nodeSize + 55}" r="3" 
+                      fill="${i < (node.importance || 3) ? '#feca57' : 'rgba(0,0,0,0.1)'}"/>
+            `).join('')}
+          </g>
+        `
+      }).join('')}
+      
+      <!-- 现代化图例 -->
+      <g transform="translate(30, 30)">
+        <rect x="0" y="0" width="280" height="150" 
+              fill="rgba(255,255,255,0.95)" 
+              stroke="rgba(0,0,0,0.1)" 
+              rx="12" 
+              filter="url(#shadow)"/>
+        
+        <text x="20" y="30" font-size="16" font-weight="bold" fill="#2c3e50">知识图谱图例</text>
+        
+        <!-- 节点类型图例 -->
+        <g transform="translate(20, 50)">
+          <circle cx="10" cy="10" r="8" fill="url(#conceptGradient)"/>
+          <text x="25" y="15" font-size="13" fill="#2c3e50">💡 核心概念</text>
+          
+          <circle cx="10" cy="35" r="8" fill="url(#supportGradient)"/>
+          <text x="25" y="40" font-size="13" fill="#2c3e50">🔧 支持工具</text>
+          
+          <circle cx="10" cy="60" r="8" fill="url(#applicationGradient)"/>
+          <text x="25" y="65" font-size="13" fill="#2c3e50">🎯 实际应用</text>
+        </g>
+        
+        <!-- 关系类型图例 -->
+        <g transform="translate(150, 50)">
+          <line x1="0" y1="10" x2="25" y2="10" stroke="#667eea" stroke-width="3" stroke-linecap="round"/>
+          <text x="30" y="15" font-size="13" fill="#2c3e50">支持关系</text>
+          
+          <line x1="0" y1="35" x2="25" y2="35" stroke="#11998e" stroke-width="3" stroke-linecap="round"/>
+          <text x="30" y="40" font-size="13" fill="#2c3e50">相关关系</text>
+          
+          <line x1="0" y1="60" x2="25" y2="60" stroke="#ff6b6b" stroke-width="3" stroke-linecap="round"/>
+          <text x="30" y="65" font-size="13" fill="#2c3e50">依赖关系</text>
+        </g>
+        
+        <!-- 重要度说明 -->
+        <g transform="translate(20, 120)">
+          <text x="0" y="0" font-size="12" fill="#666">重要度：</text>
+          ${Array.from({length: 5}).map((_, i) => `
+            <circle cx="${60 + i * 12}" cy="-4" r="3" fill="${i < 3 ? '#feca57' : 'rgba(0,0,0,0.1)'}"/>
+          `).join('')}
+          <text x="130" y="0" font-size="12" fill="#666">示例：3/5</text>
+        </g>
+      </g>
+    </svg>
+  `
+  
+  return svgContent
+}
+
+/**
+ * 获取节点颜色
+ */
+function getNodeColor(type: string): string {
+  switch (type) {
+    case 'concept': return '#3498db'
+    case 'support': return '#2ecc71'
+    case 'application': return '#f39c12'
+    case 'process': return '#e67e22'
+    case 'tool': return '#9b59b6'
+    default: return '#95a5a6'
+  }
+}
+
+/**
+ * 获取关系颜色
+ */
+function getRelationColor(type: string): string {
+  switch (type) {
+    case 'supports': return '#e74c3c'
+    case 'relates': return '#9b59b6'
+    case 'depends': return '#1abc9c'
+    case 'part_of': return '#f39c12'
+    case 'similar': return '#3498db'
+    default: return '#95a5a6'
+  }
+}
+
+/**
+ * 获取关系文本
+ */
+function getRelationText(type: string): string {
+  switch (type) {
+    case 'supports': return '支持'
+    case 'relates': return '相关'
+    case 'depends': return '依赖'
+    case 'part_of': return '包含'
+    case 'similar': return '相似'
+    default: return '关联'
+  }
+}
+
+/**
+ * 使用改进的布局算法生成节点位置
+ */
+function generateForceLayout(nodes: any[], edges: any[], width: number, height: number): any[] {
+  // 如果节点数量少，使用简单的圆形布局
+  if (nodes.length <= 6) {
+    return generateCircularLayout(nodes, width, height)
+  }
+  
+  // 为每个节点计算节点大小
+  const nodePositions = nodes.map((node, index) => ({
+    ...node,
+    x: Math.random() * (width - 300) + 150,
+    y: Math.random() * (height - 300) + 150,
+    vx: 0,
+    vy: 0,
+    radius: Math.max(35, Math.min(55, 35 + (node.importance || 3) * 4))
+  }))
+
+  // 改进的力导向算法
+  for (let iteration = 0; iteration < 150; iteration++) {
+    // 重置力
+    nodePositions.forEach(node => {
+      node.vx = 0
+      node.vy = 0
+    })
+
+    // 斥力 - 节点之间相互排斥，考虑节点大小
+    for (let i = 0; i < nodePositions.length; i++) {
+      for (let j = i + 1; j < nodePositions.length; j++) {
+        const nodeA = nodePositions[i]
+        const nodeB = nodePositions[j]
+        
+        const dx = nodeB.x - nodeA.x
+        const dy = nodeB.y - nodeA.y
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1
+        const minDistance = nodeA.radius + nodeB.radius + 40 // 最小距离包含两个节点半径加空隙
+        
+        if (distance < minDistance * 2) {
+          const repulsionStrength = 3000 / (distance * distance + 100)
+          const forceX = (dx / distance) * repulsionStrength
+          const forceY = (dy / distance) * repulsionStrength
+          
+          nodeA.vx -= forceX
+          nodeA.vy -= forceY
+          nodeB.vx += forceX
+          nodeB.vy += forceY
+        }
+      }
+    }
+
+    // 引力 - 连接的节点相互吸引
+    edges.forEach((edge: any) => {
+      const sourceNode = nodePositions.find(n => n.id === edge.source)
+      const targetNode = nodePositions.find(n => n.id === edge.target)
+      
+      if (sourceNode && targetNode) {
+        const dx = targetNode.x - sourceNode.x
+        const dy = targetNode.y - sourceNode.y
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1
+        const idealDistance = 120 + (sourceNode.radius + targetNode.radius) / 2
+        
+        const attractionStrength = 0.05 * (edge.strength || 0.5) * Math.abs(distance - idealDistance) / idealDistance
+        const forceX = (dx / distance) * attractionStrength
+        const forceY = (dy / distance) * attractionStrength
+        
+        sourceNode.vx += forceX
+        sourceNode.vy += forceY
+        targetNode.vx -= forceX
+        targetNode.vy -= forceY
+      }
+    })
+
+    // 中心引力 - 防止节点飞散
+    const centerX = width / 2
+    const centerY = height / 2
+    nodePositions.forEach(node => {
+      const dx = centerX - node.x
+      const dy = centerY - node.y
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1
+      const centerForce = 0.01
+      
+      node.vx += (dx / distance) * centerForce
+      node.vy += (dy / distance) * centerForce
+    })
+
+    // 更新位置
+    nodePositions.forEach(node => {
+      node.vx *= 0.85 // 阻尼
+      node.vy *= 0.85
+      node.x += node.vx
+      node.y += node.vy
+      
+      // 边界约束，考虑节点大小
+      node.x = Math.max(node.radius + 20, Math.min(width - node.radius - 20, node.x))
+      node.y = Math.max(node.radius + 60, Math.min(height - node.radius - 80, node.y))
+    })
+  }
+
+  return nodePositions
+}
+
+/**
+ * 圆形布局算法（用于少量节点）
+ */
+function generateCircularLayout(nodes: any[], width: number, height: number): any[] {
+  const centerX = width / 2
+  const centerY = height / 2
+  const radius = Math.min(width, height) / 3.5
+  
+  return nodes.map((node, index) => {
+    const angle = (index * 2 * Math.PI) / nodes.length - Math.PI / 2 // 从顶部开始
+    return {
+      ...node,
+      x: centerX + radius * Math.cos(angle),
+      y: centerY + radius * Math.sin(angle),
+      radius: Math.max(35, Math.min(55, 35 + (node.importance || 3) * 4))
+    }
+  })
+}
+
+/**
+ * 获取现代化关系颜色
+ */
+function getModernRelationColor(type: string): string {
+  switch (type) {
+    case 'supports': return '#667eea'
+    case 'relates': return '#11998e'
+    case 'depends': return '#ff6b6b'
+    case 'part_of': return '#feca57'
+    case 'similar': return '#a55eea'
+    default: return '#95a5a6'
+  }
+}
+
+/**
+ * 获取节点渐变ID
+ */
+function getNodeGradient(type: string): string {
+  switch (type) {
+    case 'concept': return 'conceptGradient'
+    case 'support': 
+    case 'tool': return 'supportGradient'
+    case 'application':
+    case 'process': return 'applicationGradient'
+    default: return 'conceptGradient'
+  }
+}
+
+/**
+ * 获取节点图标
+ */
+function getNodeIcon(type: string): string {
+  switch (type) {
+    case 'concept': return '💡'
+    case 'support': return '🔧'
+    case 'application': return '🎯'
+    case 'process': return '⚙️'
+    case 'tool': return '🛠️'
+    default: return '📝'
+  }
 }

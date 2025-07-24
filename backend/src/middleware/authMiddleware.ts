@@ -86,7 +86,7 @@ export function createAuthMiddleware(options: AuthOptions = {}) {
       }
 
       // 检查邮箱验证要求
-      if (options.requiredEmailVerified && !userWithPlan.emailVerified) {
+      if (options.requiredEmailVerified && !userWithPlan.email_verified) {
         return reply.code(403).send({
           success: false,
           message: '需要验证邮箱后才能访问此功能',
@@ -115,7 +115,7 @@ export function createAuthMiddleware(options: AuthOptions = {}) {
         email: userWithPlan.email,
         name: userWithPlan.name,
         plan: userWithPlan.plan,
-        emailVerified: userWithPlan.emailVerified,
+        emailVerified: userWithPlan.email_verified,
         image: userWithPlan.image
       }
 
@@ -227,7 +227,7 @@ export async function refreshTokenMiddleware(request: FastifyRequest, reply: Fas
           email: user.email,
           name: user.name,
           plan: user.plan,
-          emailVerified: user.emailVerified,
+          emailVerified: user.email_verified,
           image: user.image
         }
       }

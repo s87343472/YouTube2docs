@@ -7,6 +7,7 @@ import { passwordService } from '../services/passwordService'
 import { refreshTokenMiddleware, requireAuth } from '../middleware/authMiddleware'
 import { logger, LogCategory } from '../utils/logger'
 import { getFrontendUrl } from '../utils/corsHelper'
+import { config } from '../config'
 import { z } from 'zod'
 
 /**
@@ -71,7 +72,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         email: validatedData.email,
         password: validatedData.password,
         name: validatedData.name,
-        emailVerified: false
+        email_verified: false
       }
 
       // 创建用户
@@ -97,7 +98,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             email: newUser.email,
             name: newUser.name,
             plan: newUser.plan,
-            emailVerified: newUser.emailVerified,
+            email_verified: newUser.email_verified,
             image: newUser.image
           },
           accessToken: tokens.accessToken,
@@ -164,7 +165,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             email: user.email,
             name: user.name,
             plan: user.plan,
-            emailVerified: user.emailVerified,
+            email_verified: user.email_verified,
             image: user.image
           },
           accessToken: tokens.accessToken,
@@ -267,7 +268,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             email: userWithPlan.email,
             name: userWithPlan.name,
             plan: userWithPlan.plan,
-            emailVerified: userWithPlan.emailVerified,
+            email_verified: userWithPlan.email_verified,
             image: userWithPlan.image
           },
           accessToken: tokens.accessToken,
@@ -356,10 +357,10 @@ export async function authRoutes(fastify: FastifyInstance) {
             email: userOverview.user.email,
             name: userOverview.user.name,
             plan: userOverview.user.plan,
-            emailVerified: userOverview.user.emailVerified,
+            email_verified: userOverview.user.email_verified,
             image: userOverview.user.image,
-            createdAt: userOverview.user.createdAt,
-            updatedAt: userOverview.user.updatedAt
+            created_at: userOverview.user.created_at,
+            updated_at: userOverview.user.updated_at
           },
           subscription: userOverview.subscription,
           quotaPlan: userOverview.quotaPlan,
@@ -419,7 +420,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             email: updatedUser.email,
             name: updatedUser.name,
             plan: updatedUser.plan,
-            emailVerified: updatedUser.emailVerified,
+            email_verified: updatedUser.email_verified,
             image: updatedUser.image
           }
         }
@@ -511,10 +512,8 @@ export async function authRoutes(fastify: FastifyInstance) {
    * GET /api/auth/callback/google
    */
   fastify.get('/auth/callback/google', async (request: FastifyRequest, reply: FastifyReply) => {
-    // 简化：使用请求的Host头自动获取前端URL
-    const protocol = request.headers['x-forwarded-proto'] || (request.headers.host?.includes('localhost') ? 'http' : 'https')
-    const host = request.headers['x-forwarded-host'] || request.headers.host
-    const frontendUrl = process.env.FRONTEND_URL || `${protocol}://${host}`
+    // 获取正确的前端URL
+    const frontendUrl = config.server.frontendUrl
     
     try {
       const query = request.query as { code?: string; state?: string; error?: string }
@@ -623,6 +622,159 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({
         success: false,
         message: '登出失败'
+      })
+    }
+  })
+
+  /**
+   * 社交登录通用接口
+   * POST /api/auth/sign-in/social
+   */
+  fastify.addContentTypeParser('*', { parseAs: 'string' }, function (req, body, done) {
+    try {
+      const json = JSON.parse(body as string)
+      done(null, json)
+    } catch (err) {
+      // 如果不是JSON，返回原始字符串
+      done(null, body)
+    }
+  })
+
+  fastify.post('/auth/sign-in/social', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      logger.info('Social sign-in request received', undefined, {
+        contentType: request.headers['content-type'],
+        bodyType: typeof request.body,
+        body: request.body,
+        headers: request.headers
+      }, LogCategory.USER)
+
+      let provider = 'google' // 默认为Google
+      let callbackURL = undefined
+      
+      // 尝试从各种可能的格式中提取provider
+      if (request.body && typeof request.body === 'object') {
+        const body = request.body as any
+        provider = body.provider || 'google'
+        callbackURL = body.callbackURL
+      }
+      
+      // 目前只支持Google登录
+      if (provider !== 'google') {
+        return reply.code(400).send({
+          success: false,
+          message: '暂不支持该登录方式'
+        })
+      }
+
+      // 生成随机state参数防止CSRF
+      const state = Math.random().toString(36).substring(2, 15)
+      
+      // 生成Google OAuth授权URL
+      const authUrl = googleOAuthService.generateAuthUrl(state)
+      
+      logger.info('Google OAuth URL generated', undefined, {
+        authUrl,
+        provider,
+        state
+      }, LogCategory.USER)
+      
+      // Better Auth期望的响应格式 - 直接返回URL
+      return reply.send({
+        url: authUrl,
+        redirect: true
+      })
+
+    } catch (error) {
+      logger.error('Social sign-in failed', error as Error, {
+        contentType: request.headers['content-type'],
+        body: request.body
+      }, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '社交登录初始化失败',
+        error: {
+          message: '社交登录初始化失败'
+        }
+      })
+    }
+  })
+
+  /**
+   * 获取会话信息 (兼容旧API)
+   * GET /api/auth/get-session
+   */
+  fastify.get('/auth/get-session', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // 从Authorization header获取token
+      const authHeader = request.headers.authorization
+      
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.send({
+          success: true,
+          data: {
+            session: null,
+            user: null
+          }
+        })
+      }
+
+      const token = authHeader.substring(7)
+      
+      try {
+        // 验证JWT令牌
+        const payload = jwtService.verifyAccessToken(token)
+        
+        // 获取用户信息
+        const user = await userService.findUserById(payload.userId)
+        
+        if (!user) {
+          return reply.send({
+            success: true,
+            data: {
+              session: null,
+              user: null
+            }
+          })
+        }
+
+        return reply.send({
+          success: true,
+          data: {
+            session: {
+              userId: user.id,
+              email: user.email,
+              expiresAt: new Date(payload.exp * 1000).toISOString()
+            },
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              image: user.image,
+              email_verified: user.email_verified,
+              plan: user.plan
+            }
+          }
+        })
+
+      } catch (tokenError) {
+        // Token无效或过期
+        return reply.send({
+          success: true,
+          data: {
+            session: null,
+            user: null
+          }
+        })
+      }
+
+    } catch (error) {
+      logger.error('Get session failed', error as Error, {}, LogCategory.USER)
+      
+      return reply.code(500).send({
+        success: false,
+        message: '获取会话信息失败'
       })
     }
   })
