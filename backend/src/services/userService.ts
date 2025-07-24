@@ -12,13 +12,13 @@ export interface User {
   id: string
   email: string
   name: string
-  emailVerified: boolean
+  email_verified: boolean
   image?: string
   plan: 'free' | 'basic' | 'pro' | 'enterprise'
-  monthlyQuota: number
-  usedQuota: number
-  createdAt: Date
-  updatedAt: Date
+  monthly_quota: number
+  used_quota: number
+  created_at: Date
+  updated_at: Date
 }
 
 export interface CreateUserData {
@@ -26,15 +26,15 @@ export interface CreateUserData {
   password?: string
   name: string
   image?: string
-  emailVerified?: boolean
+  email_verified?: boolean
 }
 
 export interface UpdateUserData {
   name?: string
   image?: string
-  emailVerified?: boolean
+  email_verified?: boolean
   plan?: string
-  monthlyQuota?: number
+  monthly_quota?: number
 }
 
 export class UserService {
@@ -44,8 +44,8 @@ export class UserService {
   async findUserByEmail(email: string): Promise<User | null> {
     try {
       const query = `
-        SELECT id, email, name, "emailVerified", image, plan, "monthlyQuota", "usedQuota", "createdAt", "updatedAt"
-        FROM "user" 
+        SELECT id, email, name, email_verified, image, plan, monthly_quota, used_quota, created_at, updated_at
+        FROM users 
         WHERE email = $1
       `
       
@@ -62,13 +62,13 @@ export class UserService {
         id: user.id,
         email: user.email,
         name: user.name,
-        emailVerified: user.emailVerified,
+        email_verified: user.email_verified,
         image: user.image,
         plan: user.plan,
-        monthlyQuota: user.monthlyQuota,
-        usedQuota: user.usedQuota,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        monthly_quota: user.monthly_quota,
+        used_quota: user.used_quota,
+        created_at: user.created_at,
+        updated_at: user.updated_at
       }
     } catch (error) {
       logger.error('Failed to find user by email', error as Error, { email }, LogCategory.USER)
@@ -82,8 +82,8 @@ export class UserService {
   async findUserById(id: string): Promise<User | null> {
     try {
       const query = `
-        SELECT id, email, name, "emailVerified", image, plan, "monthlyQuota", "usedQuota", "createdAt", "updatedAt"
-        FROM "user" 
+        SELECT id, email, name, email_verified, image, plan, monthly_quota, used_quota, created_at, updated_at
+        FROM users 
         WHERE id = $1
       `
       
@@ -99,13 +99,13 @@ export class UserService {
         id: user.id,
         email: user.email,
         name: user.name,
-        emailVerified: user.emailVerified,
+        email_verified: user.email_verified,
         image: user.image,
         plan: user.plan,
-        monthlyQuota: user.monthlyQuota,
-        usedQuota: user.usedQuota,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        monthly_quota: user.monthly_quota,
+        used_quota: user.used_quota,
+        created_at: user.created_at,
+        updated_at: user.updated_at
       }
     } catch (error) {
       logger.error('Failed to find user by ID', error as Error, { userId: id }, LogCategory.USER)
@@ -116,11 +116,14 @@ export class UserService {
   /**
    * 创建新用户（邮箱注册）
    */
-  async createUser(userData: CreateUserData): Promise<User> {
-    const client = await pool.connect()
+  async createUser(userData: CreateUserData, existingClient?: any): Promise<User> {
+    const shouldUseOwnTransaction = !existingClient
+    const client = existingClient || await pool.connect()
     
     try {
-      await client.query('BEGIN')
+      if (shouldUseOwnTransaction) {
+        await client.query('BEGIN')
+      }
 
       // 检查邮箱是否已存在
       const existingUser = await this.findUserByEmail(userData.email)
@@ -139,16 +142,16 @@ export class UserService {
 
       // 插入用户记录
       const insertUserQuery = `
-        INSERT INTO "user" (id, email, name, "emailVerified", image, plan, "monthlyQuota", "usedQuota")
+        INSERT INTO users (id, email, name, email_verified, image, plan, monthly_quota, used_quota)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id, email, name, "emailVerified", image, plan, "monthlyQuota", "usedQuota", "createdAt", "updatedAt"
+        RETURNING id, email, name, email_verified, image, plan, monthly_quota, used_quota, created_at, updated_at
       `
       
       const userValues = [
         userId,
         userData.email,
         userData.name,
-        userData.emailVerified || false,
+        userData.email_verified || false,
         userData.image || null,
         'free', // 新用户默认为免费计划
         3,      // 免费计划月度配额
@@ -161,7 +164,7 @@ export class UserService {
       // 如果有密码，创建凭据记录
       if (passwordHash) {
         const insertAccountQuery = `
-          INSERT INTO account (id, "accountId", "providerId", "userId", password)
+          INSERT INTO accounts (id, provider_account_id, provider, user_id, password)
           VALUES ($1, $2, $3, $4, $5)
         `
         
@@ -176,7 +179,9 @@ export class UserService {
         await client.query(insertAccountQuery, accountValues)
       }
 
-      await client.query('COMMIT')
+      if (shouldUseOwnTransaction) {
+        await client.query('COMMIT')
+      }
 
       logger.info('User created successfully', undefined, { 
         userId: newUser.id, 
@@ -188,20 +193,24 @@ export class UserService {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
-        emailVerified: newUser.emailVerified,
+        email_verified: newUser.email_verified,
         image: newUser.image,
         plan: newUser.plan,
-        monthlyQuota: newUser.monthlyQuota,
-        usedQuota: newUser.usedQuota,
-        createdAt: newUser.createdAt,
-        updatedAt: newUser.updatedAt
+        monthly_quota: newUser.monthly_quota,
+        used_quota: newUser.used_quota,
+        created_at: newUser.created_at,
+        updated_at: newUser.updated_at
       }
     } catch (error) {
-      await client.query('ROLLBACK')
+      if (shouldUseOwnTransaction) {
+        await client.query('ROLLBACK')
+      }
       logger.error('Failed to create user', error as Error, { email: userData.email }, LogCategory.USER)
       throw error
     } finally {
-      client.release()
+      if (shouldUseOwnTransaction) {
+        client.release()
+      }
     }
   }
 
@@ -212,11 +221,11 @@ export class UserService {
     try {
       // 获取用户信息和密码哈希
       const query = `
-        SELECT u.id, u.email, u.name, u."emailVerified", u.image, u.plan, u."monthlyQuota", u."usedQuota", 
-               u."createdAt", u."updatedAt", a.password
-        FROM "user" u
-        JOIN account a ON u.id = a."userId"
-        WHERE u.email = $1 AND a."providerId" = 'credential'
+        SELECT u.id, u.email, u.name, u.email_verified, u.image, u.plan, u.monthly_quota, u.used_quota, 
+               u.created_at, u.updated_at, a.password
+        FROM users u
+        JOIN accounts a ON u.id = a.user_id
+        WHERE u.email = $1 AND a.provider = 'credential'
       `
       
       const result = await pool.query(query, [email])
@@ -242,13 +251,13 @@ export class UserService {
         id: userData.id,
         email: userData.email,
         name: userData.name,
-        emailVerified: userData.emailVerified,
+        email_verified: userData.email_verified,
         image: userData.image,
         plan: userData.plan,
-        monthlyQuota: userData.monthlyQuota,
-        usedQuota: userData.usedQuota,
-        createdAt: userData.createdAt,
-        updatedAt: userData.updatedAt
+        monthly_quota: userData.monthly_quota,
+        used_quota: userData.used_quota,
+        created_at: userData.created_at,
+        updated_at: userData.updated_at
       }
     } catch (error) {
       logger.error('Failed to verify user password', error as Error, { email }, LogCategory.USER)
@@ -276,9 +285,9 @@ export class UserService {
         values.push(updateData.image)
       }
 
-      if (updateData.emailVerified !== undefined) {
-        setParts.push(`"emailVerified" = $${paramCount++}`)
-        values.push(updateData.emailVerified)
+      if (updateData.email_verified !== undefined) {
+        setParts.push(`email_verified = $${paramCount++}`)
+        values.push(updateData.email_verified)
       }
 
       if (updateData.plan !== undefined) {
@@ -286,9 +295,9 @@ export class UserService {
         values.push(updateData.plan)
       }
 
-      if (updateData.monthlyQuota !== undefined) {
-        setParts.push(`"monthlyQuota" = $${paramCount++}`)
-        values.push(updateData.monthlyQuota)
+      if (updateData.monthly_quota !== undefined) {
+        setParts.push(`monthly_quota = $${paramCount++}`)
+        values.push(updateData.monthly_quota)
       }
 
       if (setParts.length === 0) {
@@ -296,14 +305,14 @@ export class UserService {
       }
 
       // 添加 updatedAt 和 userId
-      setParts.push(`"updatedAt" = CURRENT_TIMESTAMP`)
+      setParts.push(`updated_at = CURRENT_TIMESTAMP`)
       values.push(userId)
 
       const query = `
-        UPDATE "user" 
+        UPDATE users 
         SET ${setParts.join(', ')}
         WHERE id = $${paramCount}
-        RETURNING id, email, name, "emailVerified", image, plan, "monthlyQuota", "usedQuota", "createdAt", "updatedAt"
+        RETURNING id, email, name, email_verified, image, plan, monthly_quota, used_quota, created_at, updated_at
       `
 
       const result = await pool.query(query, values)
@@ -319,13 +328,13 @@ export class UserService {
         id: user.id,
         email: user.email,
         name: user.name,
-        emailVerified: user.emailVerified,
+        email_verified: user.email_verified,
         image: user.image,
         plan: user.plan,
-        monthlyQuota: user.monthlyQuota,
-        usedQuota: user.usedQuota,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        monthly_quota: user.monthly_quota,
+        used_quota: user.used_quota,
+        created_at: user.created_at,
+        updated_at: user.updated_at
       }
     } catch (error) {
       logger.error('Failed to update user', error as Error, { userId, updateData }, LogCategory.USER)
@@ -352,8 +361,8 @@ export class UserService {
   async updateQuotaUsage(userId: string, newUsedQuota: number): Promise<void> {
     try {
       const query = `
-        UPDATE "user" 
-        SET "usedQuota" = $1, "updatedAt" = CURRENT_TIMESTAMP
+        UPDATE users 
+        SET used_quota = $1, updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
       `
       

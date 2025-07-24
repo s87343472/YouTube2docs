@@ -31,7 +31,7 @@ sleep 2
 # 2. 清理并启动后端
 echo "2️⃣ 启动后端服务..."
 kill_port 3000 "后端服务"
-(cd backend && npm start 2>&1 | tee ../backend.log &)
+(cd backend && npm run dev 2>&1 | tee ../backend.log &)
 echo "✅ 后端服务已启动 (端口 3000)"
 sleep 3
 

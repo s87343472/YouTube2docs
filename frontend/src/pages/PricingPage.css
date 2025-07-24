@@ -135,6 +135,14 @@
   color: #1f2937;
 }
 
+.original-price {
+  font-size: 20px;
+  font-weight: 400;
+  color: #9ca3af;
+  text-decoration: line-through;
+  margin-bottom: 4px;
+}
+
 .savings {
   background: #f0f9ff;
   color: #0369a1;

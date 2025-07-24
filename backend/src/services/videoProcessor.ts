@@ -69,7 +69,7 @@ export class VideoProcessor {
   /**
    * 开始处理视频
    */
-  static async processVideo(request: ProcessVideoRequest, userId?: number): Promise<ProcessVideoResponse> {
+  static async processVideo(request: ProcessVideoRequest, userId?: string): Promise<ProcessVideoResponse> {
     console.log(`🎬 Starting video processing: ${request.youtubeUrl}`)
 
     try {
@@ -151,7 +151,7 @@ export class VideoProcessor {
   private static async executeProcessingPipeline(
     processId: string, 
     request: ProcessVideoRequest,
-    userId?: number
+    userId?: string
   ): Promise<void> {
     const startTime = Date.now()
     let videoInfo: VideoInfo | null = null
@@ -186,11 +186,26 @@ export class VideoProcessor {
 
       // 步骤3: 音频转录
       await this.updateStepStatus(processId, 'transcribe', 'processing')
-      const transcription = await TranscriptionService.smartTranscribe(
-        audioResult, 
-        videoId, 
-        request.options?.language
-      )
+      let transcription: any
+      try {
+        transcription = await TranscriptionService.smartTranscribe(
+          audioResult, 
+          videoId, 
+          request.options?.language
+        )
+      } catch (transcriptionError: any) {
+        // 如果是限流错误，提供用户友好的错误信息
+        if (transcriptionError?.message?.includes('Groq API限流')) {
+          await this.updateProcessStatus(processId, 'failed', 35, 'transcribe', 
+            '音频转录失败：API使用量已达上限，请稍后重试或升级服务等级。')
+          throw new Error('音频转录失败：API使用量已达上限，请稍后重试或升级服务等级。')
+        }
+        
+        // 其他转录错误
+        await this.updateProcessStatus(processId, 'failed', 35, 'transcribe', 
+          `音频转录失败：${transcriptionError?.message || '未知错误'}`)
+        throw transcriptionError
+      }
       await this.updateStepStatus(processId, 'transcribe', 'completed')
       await this.updateProcessStatus(processId, 'processing', 60, 'analyze_content')
 
@@ -247,56 +262,56 @@ export class VideoProcessor {
 
       console.log(`✅ Processing pipeline completed for ${processId} in ${processingTime}s`)
 
-      // 📧 发送任务完成通知
-      if (userId) {
-        try {
-          const userInfo = await this.getUserInfo(userId)
-          if (userInfo) {
-            await NotificationService.sendTaskCompletedNotification(
-              userId,
-              userInfo.email,
-              {
-                videoTitle: videoInfo.title,
-                videoChannel: videoInfo.channel,
-                processingTime,
-                completedAt: new Date().toLocaleString('zh-CN'),
-                resultUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/result/${processId}`
-              }
-            )
-          }
-        } catch (notificationError) {
-          console.error('Failed to send completion notification:', notificationError)
-          // 通知失败不应该影响主流程
-        }
-      }
+      // 📧 发送任务完成通知 (暂时禁用)
+      // if (userId) {
+      //   try {
+      //     const userInfo = await this.getUserInfo(userId)
+      //     if (userInfo) {
+      //       await NotificationService.sendTaskCompletedNotification(
+      //         userId,
+      //         userInfo.email,
+      //         {
+      //           videoTitle: videoInfo.title,
+      //           videoChannel: videoInfo.channel,
+      //           processingTime,
+      //           completedAt: new Date().toLocaleString('zh-CN'),
+      //           resultUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/result/${processId}`
+      //         }
+      //       )
+      //     }
+      //   } catch (notificationError) {
+      //     console.error('Failed to send completion notification:', notificationError)
+      //     // 通知失败不应该影响主流程
+      //   }
+      // }
 
     } catch (error) {
       console.error(`❌ Processing pipeline failed for ${processId}:`, error)
       await this.updateProcessStatus(processId, 'failed', 0, 'extract_info', error instanceof Error ? error.message : String(error))
       
-      // 📧 发送任务失败通知
-      if (userId) {
-        try {
-          const userInfo = await this.getUserInfo(userId)
-          if (userInfo) {
-            await NotificationService.sendTaskFailedNotification(
-              userId,
-              userInfo.email,
-              {
-                videoTitle: videoInfo?.title || 'Unknown Video',
-                youtubeUrl: request.youtubeUrl,
-                failedAt: new Date().toLocaleString('zh-CN'),
-                errorMessage: error instanceof Error ? error.message : String(error),
-                retryUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/process?url=${encodeURIComponent(request.youtubeUrl)}`,
-                supportUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/support`
-              }
-            )
-          }
-        } catch (notificationError) {
-          console.error('Failed to send failure notification:', notificationError)
-          // 通知失败不应该影响主流程
-        }
-      }
+      // 📧 发送任务失败通知 (暂时禁用)
+      // if (userId) {
+      //   try {
+      //     const userInfo = await this.getUserInfo(userId)
+      //     if (userInfo) {
+      //       await NotificationService.sendTaskFailedNotification(
+      //         userId,
+      //         userInfo.email,
+      //         {
+      //           videoTitle: videoInfo?.title || 'Unknown Video',
+      //           youtubeUrl: request.youtubeUrl,
+      //           failedAt: new Date().toLocaleString('zh-CN'),
+      //           errorMessage: error instanceof Error ? error.message : String(error),
+      //           retryUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/process?url=${encodeURIComponent(request.youtubeUrl)}`,
+      //           supportUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/support`
+      //         }
+      //       )
+      //     }
+      //   } catch (notificationError) {
+      //     console.error('Failed to send failure notification:', notificationError)
+      //     // 通知失败不应该影响主流程
+      //   }
+      // }
       
       throw error
     }
@@ -355,7 +370,7 @@ export class VideoProcessor {
           progress,
           current_step,
           error_message,
-          "createdAt"
+          created_at
         FROM video_processes 
         WHERE id = $1
       `, [processId])
@@ -409,10 +424,10 @@ export class VideoProcessor {
       const result = await pool.query(`
         SELECT 
           id, youtube_url, video_title, channel_name, 
-          status, progress, "createdAt", processing_time
+          status, progress, created_at, processing_time
         FROM video_processes 
         WHERE user_id = $1 
-        ORDER BY "createdAt" DESC 
+        ORDER BY created_at DESC 
         LIMIT $2
       `, [userId, limit])
 
@@ -429,7 +444,7 @@ export class VideoProcessor {
   private static async createProcessRecord(
     processId: string, 
     youtubeUrl: string, 
-    userId?: number,
+    userId?: string,
     metadata?: {
       fromCache?: boolean
       cacheId?: number
@@ -439,7 +454,7 @@ export class VideoProcessor {
     
     await pool.query(`
       INSERT INTO video_processes (
-        id, user_id, youtube_url, status, progress, metadata, "createdAt"
+        id, user_id, youtube_url, status, progress, metadata, created_at
       ) VALUES ($1, $2, $3, 'pending', 0, $4, CURRENT_TIMESTAMP)
     `, [processId, userId || null, youtubeUrl, metadataJson])
   }
@@ -456,10 +471,10 @@ export class VideoProcessor {
   ): Promise<void> {
     const query = errorMessage 
       ? `UPDATE video_processes 
-         SET status = $2, progress = $3, current_step = $4, error_message = $5, "updatedAt" = CURRENT_TIMESTAMP 
+         SET status = $2, progress = $3, current_step = $4, error_message = $5, updated_at = CURRENT_TIMESTAMP 
          WHERE id = $1`
       : `UPDATE video_processes 
-         SET status = $2, progress = $3, current_step = $4, "updatedAt" = CURRENT_TIMESTAMP 
+         SET status = $2, progress = $3, current_step = $4, updated_at = CURRENT_TIMESTAMP 
          WHERE id = $1`
 
     const params = errorMessage 
@@ -508,7 +523,7 @@ export class VideoProcessor {
         channel_name = $4,
         duration = $5,
         result_data = $6,
-        "updatedAt" = CURRENT_TIMESTAMP
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `, [
       processId,
@@ -548,7 +563,7 @@ export class VideoProcessor {
           COUNT(*) FILTER (WHERE status = 'completed') as completed_processes,
           COUNT(*) FILTER (WHERE status = 'failed') as failed_processes,
           AVG(processing_time) FILTER (WHERE processing_time IS NOT NULL) as avg_processing_time,
-          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE) as today_processes
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today_processes
         FROM video_processes
       `)
 
@@ -580,7 +595,7 @@ export class VideoProcessor {
     try {
       const result = await pool.query(`
         DELETE FROM video_processes 
-        WHERE "createdAt" < CURRENT_DATE - INTERVAL '${daysOld} days'
+        WHERE created_at < CURRENT_DATE - INTERVAL '${daysOld} days'
         AND status IN ('completed', 'failed')
       `)
 
@@ -597,7 +612,7 @@ export class VideoProcessor {
   /**
    * 获取用户信息
    */
-  private static async getUserInfo(userId: number): Promise<{ email: string } | null> {
+  private static async getUserInfo(userId: string): Promise<{ email: string } | null> {
     try {
       const result = await pool.query(
         'SELECT email FROM users WHERE id = $1',

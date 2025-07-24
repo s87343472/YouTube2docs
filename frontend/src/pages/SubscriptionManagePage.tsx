@@ -57,8 +57,14 @@ const SubscriptionManagePage: React.FC = () => {
       
       setUsage(usageData)
       setAllPlans(plansData)
-    } catch (error) {
-      message.error('加载订阅信息失败')
+    } catch (error: any) {
+      console.error('Failed to load subscription data:', error)
+      if (error.response?.status === 401) {
+        message.error('请先登录')
+        navigate('/login')
+      } else {
+        message.error(error.response?.data?.error?.message || '加载订阅信息失败')
+      }
     } finally {
       setLoading(false)
     }
@@ -213,7 +219,7 @@ const SubscriptionManagePage: React.FC = () => {
               {plan.priceMonthly === 0 ? (
                 <span className="free-plan">免费版</span>
               ) : (
-                <span className="paid-plan">¥{plan.priceMonthly}/月</span>
+                <span className="paid-plan">${plan.priceMonthly}/月</span>
               )}
             </div>
           </div>

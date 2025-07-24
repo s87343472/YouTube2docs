@@ -161,7 +161,7 @@ const SubscriptionUpgradePage: React.FC = () => {
               <h4>{plan.name}</h4>
               <div className="plan-price">
                 <span className="price">
-                  ¥{paymentForm.billingCycle === 'yearly' ? plan.priceYearly : plan.priceMonthly}
+                  ${paymentForm.billingCycle === 'yearly' ? plan.priceYearly : plan.priceMonthly}
                 </span>
                 <span className="period">
                   /{paymentForm.billingCycle === 'yearly' ? '年' : '月'}
@@ -194,7 +194,7 @@ const SubscriptionUpgradePage: React.FC = () => {
           <Radio value="yearly">
             按年付费
             {selectedPlan && selectedPlan.priceYearly < selectedPlan.priceMonthly * 12 && (
-              <span className="savings-tag">节省 ¥{selectedPlan.priceMonthly * 12 - selectedPlan.priceYearly}</span>
+              <span className="savings-tag">节省 ${selectedPlan.priceMonthly * 12 - selectedPlan.priceYearly}</span>
             )}
           </Radio>
         </Radio.Group>
@@ -312,7 +312,7 @@ const SubscriptionUpgradePage: React.FC = () => {
         {paymentForm.billingCycle === 'yearly' && calculateSavings() > 0 && (
           <div className="summary-item savings">
             <span>年付优惠</span>
-            <span>-¥{calculateSavings()}</span>
+            <span>-${calculateSavings()}</span>
           </div>
         )}
         
@@ -320,7 +320,7 @@ const SubscriptionUpgradePage: React.FC = () => {
         
         <div className="summary-total">
           <span>总计</span>
-          <span className="total-price">¥{calculatePrice()}</span>
+          <span className="total-price">${calculatePrice()}</span>
         </div>
       </Card>
 
@@ -388,7 +388,7 @@ const SubscriptionUpgradePage: React.FC = () => {
                 onClick={handlePayment}
                 size="large"
               >
-                {processing ? '处理中...' : `支付 ¥${calculatePrice()}`}
+                {processing ? '处理中...' : `支付 $${calculatePrice()}`}
               </Button>
             )}
             

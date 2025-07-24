@@ -15,6 +15,7 @@ const ServerConfigSchema = z.object({
   host: z.string().default('localhost'),
   nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
   corsOrigin: z.string().default('http://localhost:5173'),
+  frontendUrl: z.string().default('http://localhost:5173'),
   maxFileSize: z.number().int().positive().default(104857600), // 100MB
   uploadPath: z.string().default('./uploads'),
   tempPath: z.string().default('./temp')
@@ -71,7 +72,7 @@ const APIConfigSchema = z.object({
 
 const LoggingConfigSchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-  format: z.enum(['json', 'pretty']).default('json'),
+  format: z.enum(['json', 'pretty', 'text']).default('json'),
   enableConsole: z.boolean().default(true),
   enableFile: z.boolean().default(true),
   logDirectory: z.string().default('./logs'),
@@ -134,6 +135,7 @@ function parseConfig() {
       host: process.env.HOST || 'localhost',
       nodeEnv: process.env.NODE_ENV || 'development',
       corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
       maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600'),
       uploadPath: process.env.UPLOAD_PATH || './uploads',
       tempPath: process.env.TEMP_PATH || './temp'
@@ -141,14 +143,14 @@ function parseConfig() {
     
     database: {
       postgresql: {
-        host: process.env.POSTGRES_HOST || 'localhost',
-        port: parseInt(process.env.POSTGRES_PORT || '5432'),
-        database: process.env.POSTGRES_DB || '',
-        username: process.env.POSTGRES_USER || '',
-        password: process.env.POSTGRES_PASSWORD || '',
-        maxConnections: parseInt(process.env.POSTGRES_MAX_CONNECTIONS || '20'),
-        connectionTimeout: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT || '30000'),
-        ssl: process.env.POSTGRES_SSL === 'true'
+        host: process.env.DATABASE_HOST || 'localhost',
+        port: parseInt(process.env.DATABASE_PORT || '5432'),
+        database: process.env.DATABASE_NAME || 'youtube_learning',
+        username: process.env.DATABASE_USER || 'sagasu',
+        password: process.env.DATABASE_PASSWORD || '',
+        maxConnections: parseInt(process.env.DB_POOL_MAX || '10'),
+        connectionTimeout: parseInt(process.env.DATABASE_CONNECTION_TIMEOUT || '30000'),
+        ssl: process.env.DATABASE_SSL === 'true'
       },
       
       redis: {
@@ -271,9 +273,8 @@ export const validateConfig = () => {
   
   // Check required environment variables
   const requiredVars = [
-    'POSTGRES_DB',
-    'POSTGRES_USER',
-    'POSTGRES_PASSWORD',
+    'DATABASE_NAME',
+    'DATABASE_USER',
     'GROQ_API_KEY',
     'GEMINI_API_KEY'
   ]

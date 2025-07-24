@@ -28,7 +28,7 @@ export interface QuotaPlan {
 
 export interface UserSubscription {
   id: number
-  userId: number
+  userId: string
   planType: string
   status: string
   startedAt: Date
@@ -59,7 +59,7 @@ export class QuotaService {
   /**
    * 获取用户当前订阅信息
    */
-  static async getUserSubscription(userId: number): Promise<UserSubscription | null> {
+  static async getUserSubscription(userId: string): Promise<UserSubscription | null> {
     try {
       const result = await pool.query(`
         SELECT 
@@ -96,7 +96,7 @@ export class QuotaService {
   /**
    * 创建免费版订阅
    */
-  static async createFreeSubscription(userId: number): Promise<UserSubscription> {
+  static async createFreeSubscription(userId: string): Promise<UserSubscription> {
     try {
       const result = await pool.query(`
         INSERT INTO user_subscriptions (user_id, plan_type, status)
@@ -134,7 +134,7 @@ export class QuotaService {
           has_team_management, has_custom_branding, max_storage_gb, max_shared_items,
           monthly_duration_quota
         FROM quota_plans 
-        WHERE plan_type = $1 AND is_active = true
+        WHERE plan_type = $1
       `, [planType])
 
       if (result.rows.length === 0) {
@@ -180,7 +180,7 @@ export class QuotaService {
           has_team_management, has_custom_branding, max_storage_gb, max_shared_items,
           monthly_duration_quota
         FROM quota_plans 
-        WHERE is_active = true
+        -- 获取所有计划
         ORDER BY price_monthly ASC
       `)
 
@@ -212,7 +212,7 @@ export class QuotaService {
   /**
    * 获取用户当前配额使用情况
    */
-  static async getUserQuotaUsage(userId: number, quotaType: string): Promise<QuotaUsage | null> {
+  static async getUserQuotaUsage(userId: string, quotaType: string): Promise<QuotaUsage | null> {
     try {
       // 获取当前月份的起始和结束时间
       const now = new Date()
@@ -264,7 +264,7 @@ export class QuotaService {
   /**
    * 获取用户当前月度总时长使用情况
    */
-  static async getUserMonthlyDurationUsage(userId: number): Promise<number> {
+  static async getUserMonthlyDurationUsage(userId: string): Promise<number> {
     try {
       const now = new Date()
       const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -288,7 +288,7 @@ export class QuotaService {
    * 记录用户视频时长使用
    */
   static async recordDurationUsage(
-    userId: number, 
+    userId: string, 
     videoId: string, 
     durationMinutes: number
   ): Promise<void> {
@@ -318,7 +318,7 @@ export class QuotaService {
    * 检查用户是否可以执行某个操作
    */
   static async checkQuota(
-    userId: number, 
+    userId: string, 
     quotaType: string, 
     amount: number = 1,
     metadata?: any
@@ -425,7 +425,7 @@ export class QuotaService {
    * 记录配额使用
    */
   static async recordQuotaUsage(
-    userId: number,
+    userId: string,
     quotaType: string,
     action: string,
     amount: number = 1,
@@ -482,7 +482,7 @@ export class QuotaService {
   /**
    * 检查并创建配额预警
    */
-  static async checkAndCreateQuotaAlerts(userId: number, quotaType: string): Promise<void> {
+  static async checkAndCreateQuotaAlerts(userId: string, quotaType: string): Promise<void> {
     try {
       const usage = await this.getUserQuotaUsage(userId, quotaType)
       if (!usage || usage.maxAmount === 0) {
@@ -521,7 +521,7 @@ export class QuotaService {
    * 创建配额预警
    */
   static async createQuotaAlert(
-    userId: number,
+    userId: string,
     quotaType: string,
     alertType: string,
     thresholdPercentage: number,
@@ -590,7 +590,7 @@ export class QuotaService {
   /**
    * 获取用户的所有配额使用情况
    */
-  static async getUserAllQuotaUsage(userId: number): Promise<QuotaUsage[]> {
+  static async getUserAllQuotaUsage(userId: string): Promise<QuotaUsage[]> {
     try {
       const quotaTypes = ['video_processing', 'shares', 'storage', 'exports']
       const usageList: QuotaUsage[] = []
@@ -612,7 +612,7 @@ export class QuotaService {
   /**
    * 获取用户未读的配额预警
    */
-  static async getUserQuotaAlerts(userId: number): Promise<any[]> {
+  static async getUserQuotaAlerts(userId: string): Promise<any[]> {
     try {
       const result = await pool.query(`
         SELECT id, quota_type, alert_type, threshold_percentage, message, created_at
@@ -631,7 +631,7 @@ export class QuotaService {
   /**
    * 标记预警为已读
    */
-  static async markQuotaAlertsAsRead(userId: number, alertIds: number[]): Promise<void> {
+  static async markQuotaAlertsAsRead(userId: string, alertIds: number[]): Promise<void> {
     try {
       if (alertIds.length === 0) return
 
@@ -653,7 +653,7 @@ export class QuotaService {
    * 升级用户套餐
    */
   static async upgradeUserPlan(
-    userId: number, 
+    userId: string, 
     newPlanType: string, 
     paymentMethod: string = 'unknown'
   ): Promise<UserSubscription> {
@@ -682,7 +682,7 @@ export class QuotaService {
 
       // 设置新的过期时间
       const now = new Date()
-      const expiresAt = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
+      const expires_at = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
 
       // 停用当前订阅
       await pool.query(`
@@ -697,7 +697,7 @@ export class QuotaService {
         (user_id, plan_type, status, expires_at, payment_method)
         VALUES ($1, $2, 'active', $3, $4)
         RETURNING id, user_id, plan_type, status, started_at, expires_at, auto_renew, payment_method
-      `, [userId, newPlanType, expiresAt, paymentMethod])
+      `, [userId, newPlanType, expires_at, paymentMethod])
 
       const newSubscription = {
         id: result.rows[0].id,
@@ -728,7 +728,7 @@ export class QuotaService {
    * 降级用户套餐 (在当前订阅期结束时生效)
    */
   static async downgradeUserPlan(
-    userId: number, 
+    userId: string, 
     newPlanType: string
   ): Promise<void> {
     try {
@@ -762,8 +762,8 @@ export class QuotaService {
       `, [userId])
 
       // 创建待生效的降级订阅
-      const expiresAt = currentSubscription.expiresAt || new Date()
-      const nextPeriodStart = new Date(expiresAt.getTime() + 24 * 60 * 60 * 1000) // 下一天开始
+      const expires_at = currentSubscription.expiresAt || new Date()
+      const nextPeriodStart = new Date(expires_at.getTime() + 24 * 60 * 60 * 1000) // 下一天开始
 
       await pool.query(`
         INSERT INTO user_subscriptions 
@@ -786,7 +786,7 @@ export class QuotaService {
   /**
    * 取消订阅 (当前周期结束后不再续费)
    */
-  static async cancelSubscription(userId: number): Promise<void> {
+  static async cancelSubscription(userId: string): Promise<void> {
     try {
       const currentSubscription = await this.getUserSubscription(userId)
       if (!currentSubscription) {
@@ -830,7 +830,7 @@ export class QuotaService {
    * 退款并立即取消会员 (立即失效)
    */
   static async refundAndCancel(
-    userId: number, 
+    userId: string, 
     refundReason: string = 'user_request'
   ): Promise<{ refundAmount: number }> {
     try {

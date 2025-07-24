@@ -27,7 +27,7 @@ export interface QuotaPlan {
 
 export interface UserSubscription {
   id: number
-  userId: number
+  userId: string  // 修改为 string 类型
   planType: string
   status: string
   startedAt: string
@@ -68,8 +68,15 @@ export class QuotaService {
    * 获取所有配额计划
    */
   static async getAllQuotaPlans(): Promise<QuotaPlan[]> {
-    const response = await api.get('/quota/plans')
-    return response.data.data
+    console.log('Fetching quota plans from API...')
+    try {
+      const response = await api.get('/quota/plans')
+      console.log('Quota plans response:', response.data)
+      return response.data.data
+    } catch (error) {
+      console.error('Error fetching quota plans:', error)
+      throw error
+    }
   }
 
   /**
@@ -231,6 +238,12 @@ export class QuotaService {
         secondary: 'bg-purple-50',
         accent: 'border-purple-200',
         badge: 'bg-purple-100 text-purple-800'
+      },
+      'enterprise': {
+        primary: 'text-purple-600',
+        secondary: 'bg-purple-50',
+        accent: 'border-purple-200',
+        badge: 'bg-purple-100 text-purple-800'
       }
     }
     return themes[planType] || themes.free
@@ -250,7 +263,7 @@ export class QuotaService {
   /**
    * 降级订阅
    */
-  static async downgradeSubscription(userId: number, planType: string): Promise<void> {
+  static async downgradeSubscription(userId: string | number, planType: string): Promise<void> {
     await api.post('/quota/downgrade', {
       planType
     })
@@ -259,14 +272,14 @@ export class QuotaService {
   /**
    * 取消订阅
    */
-  static async cancelSubscription(userId: number): Promise<void> {
+  static async cancelSubscription(userId: string | number): Promise<void> {
     await api.post('/quota/cancel')
   }
 
   /**
    * 退款并取消订阅
    */
-  static async refundSubscription(userId: number, reason?: string): Promise<{ refundAmount: number }> {
+  static async refundSubscription(userId: string | number, reason?: string): Promise<{ refundAmount: number }> {
     const response = await api.post('/quota/refund', {
       reason
     })

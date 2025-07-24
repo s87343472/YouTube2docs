@@ -112,9 +112,9 @@ const SubscriptionSuccessPage: React.FC = () => {
               <h3>{plan.name}</h3>
               <p className="plan-description">{plan.description}</p>
               <div className="plan-price">
-                <span className="monthly-price">¥{plan.priceMonthly}/月</span>
+                <span className="monthly-price">${plan.priceMonthly}/月</span>
                 {plan.priceYearly > 0 && (
-                  <span className="yearly-price">或 ¥{plan.priceYearly}/年</span>
+                  <span className="yearly-price">或 ${plan.priceYearly}/年</span>
                 )}
               </div>
             </div>

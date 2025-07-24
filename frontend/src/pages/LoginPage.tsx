@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { User, Mail, Lock, Eye, EyeOff, LogIn, UserPlus } from 'lucide-react'
-import { authClient } from '../lib/auth-client'
+import axios from 'axios'
 
 /**
  * 用户登录和注册页面
@@ -27,34 +27,42 @@ export const LoginPage = () => {
     try {
       if (isLogin) {
         // 登录
-        const { data, error } = await authClient.signIn.email({
+        const response = await axios.post('http://localhost:3000/api/auth/login', {
           email: formData.email,
           password: formData.password,
         })
 
-        if (error) {
-          setError(error.message || '登录失败')
-        } else {
+        if (response.data.success) {
+          // 保存token到localStorage
+          localStorage.setItem('token', response.data.data.accessToken)
+          localStorage.setItem('refreshToken', response.data.data.refreshToken)
+          
           // 登录成功，跳转到用户中心
           navigate('/user-center')
+        } else {
+          setError(response.data.message || '登录失败')
         }
       } else {
         // 注册
-        const { data, error } = await authClient.signUp.email({
+        const response = await axios.post('http://localhost:3000/api/auth/register', {
           email: formData.email,
           password: formData.password,
           name: formData.name,
         })
 
-        if (error) {
-          setError(error.message || '注册失败')
-        } else {
+        if (response.data.success) {
+          // 保存token到localStorage
+          localStorage.setItem('token', response.data.data.accessToken)
+          localStorage.setItem('refreshToken', response.data.data.refreshToken)
+          
           // 注册成功，跳转到用户中心
           navigate('/user-center')
+        } else {
+          setError(response.data.message || '注册失败')
         }
       }
-    } catch (err) {
-      setError('网络错误，请稍后重试')
+    } catch (err: any) {
+      setError(err.response?.data?.message || '网络错误，请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -219,16 +227,10 @@ export const LoginPage = () => {
               onClick={async () => {
                 setLoading(true)
                 try {
-                  const { data, error } = await authClient.signIn.social({
-                    provider: 'google',
-                    callbackURL: `${window.location.origin}/user-center`
-                  })
-                  if (error) {
-                    setError('Google登录失败')
-                  }
+                  // 直接跳转到Google OAuth授权页面
+                  window.location.href = 'http://localhost:3000/api/auth/sign-in/google'
                 } catch (err) {
                   setError('Google登录失败')
-                } finally {
                   setLoading(false)
                 }
               }}

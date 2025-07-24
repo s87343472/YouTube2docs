@@ -59,34 +59,47 @@ export class KnowledgeGraphService {
     knowledgeGraph: KnowledgeGraph,
     learningMaterial: LearningMaterial
   ): Promise<StudyCard[]> {
-    console.log('📚 Generating enhanced study cards using batch API calls')
+    console.log('📚 Generating enhanced study cards')
 
     try {
-      if (!hasGeminiKey()) {
-        return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial)
-      }
-
-      const cards: StudyCard[] = []
-
-      // 分批次生成，每次传递最少必要信息，减少API调用复杂度
-      console.log('🔄 Batch 1: Generating concept cards...')
-      const conceptCards = await this.generateConceptCardsBatch(learningMaterial.summary.concepts.slice(0, 3), learningMaterial.videoInfo.title)
-      cards.push(...conceptCards)
-
-      console.log('🔄 Batch 2: Generating comprehension cards...')
-      const comprehensionCards = await this.generateComprehensionCardsBatch(learningMaterial.summary.keyPoints.slice(0, 2))
-      cards.push(...comprehensionCards)
-
-      console.log('🔄 Batch 3: Generating memory cards...')
-      const memoryCards = await this.generateMemoryCardsBatch(learningMaterial.summary.concepts.slice(0, 2))
-      cards.push(...memoryCards)
-
-      console.log(`✅ Generated ${cards.length} optimized study cards using batch approach`)
-      return cards.slice(0, 8) // 控制在8张以内，保证质量
+      // 使用增强的卡片生成器
+      const { EnhancedCardGenerator } = await import('./enhancedCardGenerator')
+      const cards = await EnhancedCardGenerator.generateEnhancedStudyCards(learningMaterial, 10)
+      
+      console.log(`✅ Generated ${cards.length} enhanced study cards`)
+      return cards
 
     } catch (error) {
-      console.error('❌ Failed to generate study cards:', error)
-      return this.generateOptimizedMockStudyCards(knowledgeGraph, learningMaterial)
+      console.error('❌ Failed to generate enhanced study cards, falling back to batch approach:', error)
+      
+      // 降级到原有的批处理方法
+      try {
+        if (!hasGeminiKey()) {
+          return this.generateEnhancedMockStudyCards(knowledgeGraph, learningMaterial)
+        }
+
+        const cards: StudyCard[] = []
+
+        // 分批次生成，每次传递最少必要信息，减少API调用复杂度
+        console.log('🔄 Batch 1: Generating concept cards...')
+        const conceptCards = await this.generateConceptCardsBatch(learningMaterial.summary.concepts.slice(0, 3), learningMaterial.videoInfo.title)
+        cards.push(...conceptCards)
+
+        console.log('🔄 Batch 2: Generating comprehension cards...')
+        const comprehensionCards = await this.generateComprehensionCardsBatch(learningMaterial.summary.keyPoints.slice(0, 2))
+        cards.push(...comprehensionCards)
+
+        console.log('🔄 Batch 3: Generating memory cards...')
+        const memoryCards = await this.generateMemoryCardsBatch(learningMaterial.summary.concepts.slice(0, 2))
+        cards.push(...memoryCards)
+
+        console.log(`✅ Generated ${cards.length} optimized study cards using batch approach`)
+        return cards.slice(0, 8) // 控制在8张以内，保证质量
+
+      } catch (error) {
+        console.error('❌ Failed to generate study cards:', error)
+        return this.generateOptimizedMockStudyCards(knowledgeGraph, learningMaterial)
+      }
     }
   }
 
@@ -98,13 +111,18 @@ export class KnowledgeGraphService {
     transcription: TranscriptionResult,
     learningMaterial: LearningMaterial
   ): Promise<string[]> {
-    const systemPrompt = `你是一个知识提取专家。请从视频内容中提取所有重要的概念、技能、事实和过程。
+    const systemPrompt = `你是一个教育知识图谱专家。请从视频内容中提取符合教学逻辑的核心概念。
 
-要求：
-1. 提取15-30个核心概念
-2. 包括理论概念、实践技能、重要事实
-3. 避免过于细节的概念
-4. 确保概念具有教学价值
+知识图谱设计原则：
+1. 按教学层次分类：基础概念 → 应用操作 → 工具技能
+2. 提取8-15个核心概念（避免过多细节）
+3. 确保概念间有清晰的逻辑关系
+4. 重点关注学习者需要掌握的关键知识点
+
+概念分类指导：
+- 基础概念：核心理论、基本定义、重要原理
+- 应用操作：具体使用方法、操作步骤、实践技能
+- 工具技能：辅助工具、快捷方式、效率提升方法
 
 请以JSON数组格式返回概念列表：
 ["概念1", "概念2", ...]`
@@ -292,24 +310,42 @@ ${learningMaterial.summary.keyPoints.join('\n')}
   }
 
   /**
-   * 工具函数：分类概念类型
+   * 工具函数：分类概念类型（改进版）
    */
   private static classifyConceptType(concept: string): KnowledgeNode['type'] {
     const conceptLower = concept.toLowerCase()
     
-    if (conceptLower.includes('如何') || conceptLower.includes('方法') || conceptLower.includes('步骤')) {
-      return 'process'
+    // 基础概念 - 核心理论和定义
+    const basicConceptKeywords = ['基础', '概念', '定义', '原理', '理论', '什么是', '介绍']
+    if (basicConceptKeywords.some(keyword => conceptLower.includes(keyword))) {
+      return 'concept'
     }
-    if (conceptLower.includes('技能') || conceptLower.includes('能力') || conceptLower.includes('操作')) {
+    
+    // 工具和功能 - 软件功能、快捷键、工具
+    const toolKeywords = ['工具', '功能', '快捷键', '按钮', '菜单', '格式刷', '复原', '快捷', '键盘', 'ctrl', 'alt']
+    if (toolKeywords.some(keyword => conceptLower.includes(keyword))) {
       return 'skill'
     }
-    if (conceptLower.includes('应用') || conceptLower.includes('实践') || conceptLower.includes('案例')) {
+    
+    // 应用操作 - 具体的使用方法和操作
+    const applicationKeywords = ['操作', '使用', '应用', '设定', '输入', '格式', '方法', '技巧', '步骤', '如何']
+    if (applicationKeywords.some(keyword => conceptLower.includes(keyword))) {
       return 'application'
     }
-    if (conceptLower.includes('数据') || conceptLower.includes('统计') || conceptLower.includes('事实')) {
+    
+    // 流程步骤 - 过程性知识
+    const processKeywords = ['流程', '过程', '步骤', '顺序', '先后', '程序']
+    if (processKeywords.some(keyword => conceptLower.includes(keyword))) {
+      return 'process'
+    }
+    
+    // 数据和事实 - 具体信息
+    const factKeywords = ['数据', '信息', '统计', '事实', '数字', '结果']
+    if (factKeywords.some(keyword => conceptLower.includes(keyword))) {
       return 'fact'
     }
     
+    // 默认归类为概念
     return 'concept'
   }
 
@@ -422,39 +458,73 @@ ${learningMaterial.summary.keyPoints.join('\n')}
     description: string,
     bidirectional: boolean
   } | null> {
-    // 简化的关系分析逻辑
     const source = sourceNode.label.toLowerCase()
     const target = targetNode.label.toLowerCase()
     
-    // 检查先决条件关系
-    if (sourceNode.complexity < targetNode.complexity && 
-        sourceNode.importance >= 6 && targetNode.importance >= 6) {
-      return {
-        type: 'prerequisite',
-        strength: 7,
-        description: `${sourceNode.label}是理解${targetNode.label}的基础`,
-        bidirectional: false
-      }
-    }
-    
-    // 检查应用关系
+    // 1. 基础概念 → 应用操作 (supports 关系)
     if (sourceNode.type === 'concept' && targetNode.type === 'application') {
       return {
-        type: 'applies_to',
-        strength: 6,
-        description: `${sourceNode.label}在${targetNode.label}中得到应用`,
+        type: 'supports',
+        strength: 8,
+        description: `${sourceNode.label}支持${targetNode.label}的实现`,
         bidirectional: false
       }
     }
     
-    // 检查相似关系
-    const similarity = this.calculateSimilarity(source, target)
-    if (similarity > 0.3) {
+    // 2. 基础概念 → 工具技能 (supports 关系)
+    if (sourceNode.type === 'concept' && targetNode.type === 'skill') {
       return {
-        type: 'similar',
-        strength: Math.floor(similarity * 10),
-        description: `${sourceNode.label}与${targetNode.label}有相似之处`,
-        bidirectional: true
+        type: 'supports',
+        strength: 7,
+        description: `${sourceNode.label}是使用${targetNode.label}的基础`,
+        bidirectional: false
+      }
+    }
+    
+    // 3. 应用操作之间的相关关系
+    if (sourceNode.type === 'application' && targetNode.type === 'application') {
+      const similarity = this.calculateSimilarity(source, target)
+      if (similarity > 0.3) {
+        return {
+          type: 'relates',
+          strength: Math.min(8, Math.floor(similarity * 10) + 2),
+          description: `${sourceNode.label}与${targetNode.label}在应用中相关`,
+          bidirectional: true
+        }
+      }
+    }
+    
+    // 4. 工具技能之间的相关关系
+    if (sourceNode.type === 'skill' && targetNode.type === 'skill') {
+      const similarity = this.calculateSimilarity(source, target)
+      if (similarity > 0.25) {
+        return {
+          type: 'relates',
+          strength: Math.min(7, Math.floor(similarity * 10) + 1),
+          description: `${sourceNode.label}与${targetNode.label}都是提升效率的工具`,
+          bidirectional: true
+        }
+      }
+    }
+    
+    // 5. 先决条件关系（基于复杂度和重要性）
+    if (sourceNode.complexity < targetNode.complexity && 
+        sourceNode.importance >= 7 && targetNode.importance >= 6) {
+      return {
+        type: 'prerequisite',
+        strength: 8,
+        description: `${sourceNode.label}是理解${targetNode.label}的前提`,
+        bidirectional: false
+      }
+    }
+    
+    // 6. 应用操作 → 工具技能 (extends 关系)
+    if (sourceNode.type === 'application' && targetNode.type === 'skill') {
+      return {
+        type: 'extends',
+        strength: 6,
+        description: `${targetNode.label}可以提升${sourceNode.label}的效率`,
+        bidirectional: false
       }
     }
     

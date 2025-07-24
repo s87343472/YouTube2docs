@@ -29,6 +29,8 @@ kill_port 5174 "前端服务备用"
 pkill -f "vite" 2>/dev/null || true
 pkill -f "npm.*dev" 2>/dev/null || true
 pkill -f "node.*dist/index.js" 2>/dev/null || true
+pkill -f "nodemon" 2>/dev/null || true
+pkill -f "ts-node" 2>/dev/null || true
 
 # 验证结果
 echo "📊 验证结果..."
