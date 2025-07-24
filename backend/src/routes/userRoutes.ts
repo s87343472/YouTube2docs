@@ -98,12 +98,12 @@ export async function userRoutes(fastify: FastifyInstance) {
       // 获取分享创建统计数据
       const shareStatsQuery = `
         SELECT 
-          DATE("createdAt") as share_date,
+          DATE(created_at) as share_date,
           COUNT(*) as daily_shares
         FROM shared_content
         WHERE user_id = $1 
-          AND "createdAt" >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY DATE("createdAt")
+          AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY DATE(created_at)
         ORDER BY share_date
       `
       
@@ -241,10 +241,10 @@ export async function userRoutes(fastify: FastifyInstance) {
           plan,
           monthly_quota,
           used_quota,
-          "createdAt",
+          created_at,
           is_active
         FROM users 
-        WHERE id = $1 AND is_active = true
+        WHERE id = $1
       `
       
       const userResult = await pool.query(userQuery, [userId])
@@ -266,8 +266,8 @@ export async function userRoutes(fastify: FastifyInstance) {
         SELECT 
           COUNT(*) as total_processes,
           COUNT(*) FILTER (WHERE status = 'completed') as completed_processes,
-          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE) as today_processes,
-          COUNT(*) FILTER (WHERE "createdAt" >= CURRENT_DATE - INTERVAL '7 days') as week_processes
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today_processes,
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '7 days') as week_processes
         FROM video_processes
         WHERE user_id = $1
       `
@@ -403,9 +403,9 @@ export async function userRoutes(fastify: FastifyInstance) {
       
       const updateQuery = `
         UPDATE users 
-        SET ${updateFields.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE id = $${paramIndex} AND is_active = true
-        RETURNING id, name, email, "updatedAt"
+        SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $${paramIndex}
+        RETURNING id, name, email, updated_at
       `
       
       const result = await pool.query(updateQuery, values)
@@ -739,7 +739,6 @@ export async function userRoutes(fastify: FastifyInstance) {
                       youtubeUrl: { type: 'string' },
                       videoTitle: { type: 'string' },
                       status: { type: 'string' },
-                      progress: { type: 'number' },
                       currentStep: { type: 'string' },
                       createdAt: { type: 'string' },
                       updatedAt: { type: 'string' }
@@ -787,15 +786,14 @@ export async function userRoutes(fastify: FastifyInstance) {
           video_title as "videoTitle",
           channel_name as "channelName",
           status, 
-          progress, 
           current_step as "currentStep",
           error_message as "errorMessage",
           processing_time as "processingTime",
-          "createdAt", 
-          "updatedAt"
+          created_at, 
+          updated_at
         FROM video_processes 
         WHERE user_id = $1 ${statusFilter}
-        ORDER BY "createdAt" DESC 
+        ORDER BY created_at DESC 
         LIMIT $2 OFFSET $3
       `
       

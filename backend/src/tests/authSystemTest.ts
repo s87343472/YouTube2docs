@@ -244,7 +244,7 @@ export class AuthSystemTester {
         email: testEmail,
         password: 'TestPassword123!',
         name: 'Test User',
-        emailVerified: false
+        email_verified: false
       }
 
       // 创建用户
@@ -416,7 +416,7 @@ export class AuthSystemTester {
 
       // 获取迁移状态
       const migrations = await databaseAdapter.getMigrationStatus()
-      if (!Array.isArray(migrations)) {
+      if (!migrations || typeof migrations !== 'object') {
         throw new Error('Migration status check failed')
       }
 
@@ -425,8 +425,8 @@ export class AuthSystemTester {
         status: 'pass',
         duration: Date.now() - start,
         details: { 
-          userCount: integration.userCount,
-          migrationCount: migrations.length 
+          integrationValid: integration,
+          migrationStatus: migrations.status 
         }
       })
     } catch (error) {
@@ -477,9 +477,9 @@ export class AuthSystemTester {
     try {
       if (this.testUser) {
         // 删除测试用户相关数据
-        await pool.query('DELETE FROM account WHERE "userId" = $1', [this.testUser.id])
-        await pool.query('DELETE FROM user_id_mapping WHERE string_id = $1', [this.testUser.id])
-        await pool.query('DELETE FROM "user" WHERE id = $1', [this.testUser.id])
+        await pool.query('DELETE FROM accounts WHERE user_id = $1', [this.testUser.id])
+        await pool.query('-- 不再需要user_id_mapping表', [this.testUser.id])
+        await pool.query('DELETE FROM users WHERE id = $1', [this.testUser.id])
         
         logger.info('Test user data cleaned up', undefined, { userId: this.testUser.id }, LogCategory.USER)
       }

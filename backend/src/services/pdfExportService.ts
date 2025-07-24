@@ -17,6 +17,11 @@ interface PDFExportOptions {
   includeCards?: boolean
   watermark?: string
   theme?: 'light' | 'dark' | 'minimal'
+  graphImage?: {
+    data: string // base64 data URL
+    type: 'canvas' | 'network'
+    caption: string
+  }
 }
 
 interface ExportResult {
@@ -275,6 +280,7 @@ export class PDFExportService {
                 <ul class="toc">
                     <li><a href="#summary">学习概要</a></li>
                     <li><a href="#concepts">核心概念</a></li>
+                    ${options.graphImage ? '<li><a href="#knowledge-graph">知识图谱</a></li>' : ''}
                     <li><a href="#content">结构化内容</a></li>
                     ${options.includeCards ? '<li><a href="#cards">学习卡片</a></li>' : ''}
                     <li><a href="#appendix">附录</a></li>
@@ -320,6 +326,18 @@ export class PDFExportService {
                     </div>
                 `).join('') || '<p>暂无核心概念</p>'}
             </section>
+            
+            <!-- 知识图谱 -->
+            ${options.graphImage ? `
+                <div class="page-break"></div>
+                <section id="knowledge-graph" class="section">
+                    <h2>📊 知识图谱</h2>
+                    <div class="graph-container">
+                        <img src="${options.graphImage.data}" alt="知识图谱" class="graph-image" />
+                        <p class="graph-caption">${options.graphImage.caption}</p>
+                    </div>
+                </section>
+            ` : ''}
             
             <!-- 结构化内容 -->
             <div class="page-break"></div>
@@ -473,6 +491,11 @@ export class PDFExportService {
         .card-type { background: #007acc; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
         .card-content { margin: 1rem 0; }
         .card-footer { display: flex; justify-content: space-between; font-size: 0.9rem; color: #666; }
+        
+        /* 知识图谱样式 */
+        .graph-container { text-align: center; margin: 2rem 0; }
+        .graph-image { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1rem; }
+        .graph-caption { font-size: 0.9rem; color: #666; font-style: italic; }
     `
     
     const themeStyles = {

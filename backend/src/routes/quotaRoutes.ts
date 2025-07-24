@@ -40,7 +40,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
                   hasTeamManagement: { type: 'boolean' },
                   hasCustomBranding: { type: 'boolean' },
                   maxStorageGb: { type: 'number' },
-                  maxSharedItems: { type: 'number' }
+                  maxSharedItems: { type: 'number' },
+                  monthlyDurationQuota: { type: 'number' }
                 }
               }
             }
@@ -71,7 +72,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户当前订阅信息
    */
   fastify.get('/quota/subscription', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       response: {
         200: {
@@ -85,7 +86,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
                   type: 'object',
                   properties: {
                     id: { type: 'number' },
-                    userId: { type: 'number' },
+                    userId: { type: 'string' },
                     planType: { type: 'string' },
                     status: { type: 'string' },
                     startedAt: { type: 'string' },
@@ -112,7 +113,8 @@ export async function quotaRoutes(fastify: FastifyInstance) {
                     hasTeamManagement: { type: 'boolean' },
                     hasCustomBranding: { type: 'boolean' },
                     maxStorageGb: { type: 'number' },
-                    maxSharedItems: { type: 'number' }
+                    maxSharedItems: { type: 'number' },
+                    monthlyDurationQuota: { type: 'number' }
                   }
                 }
               }
@@ -123,7 +125,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       
       const subscription = await QuotaService.getUserSubscription(userId)
       if (!subscription) {
@@ -163,7 +171,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户配额使用情况
    */
   fastify.get('/quota/usage', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       response: {
         200: {
@@ -190,7 +198,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       
       const usageList = await QuotaService.getUserAllQuotaUsage(userId)
       
@@ -213,7 +227,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 检查用户配额
    */
   fastify.post('/quota/check', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -270,7 +284,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { quotaType, amount = 1, metadata } = request.body
       
       const checkResult = await QuotaService.checkQuota(userId, quotaType, amount, metadata)
@@ -294,7 +314,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 获取用户配额预警
    */
   fastify.get('/quota/alerts', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       response: {
         200: {
@@ -321,7 +341,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       
       const alerts = await QuotaService.getUserQuotaAlerts(userId)
       
@@ -344,7 +370,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 标记预警为已读
    */
   fastify.post('/quota/alerts/read', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -372,7 +398,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { alertIds } = request.body
       
       await QuotaService.markQuotaAlertsAsRead(userId, alertIds)
@@ -396,7 +428,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 升级套餐
    */
   fastify.post('/quota/upgrade', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -404,7 +436,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
         properties: {
           planType: { 
             type: 'string',
-            enum: ['pro', 'max']
+            enum: ['basic', 'pro', 'enterprise']
           },
           paymentMethod: { type: 'string' }
         }
@@ -432,7 +464,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { planType, paymentMethod = 'unknown' } = request.body
       
       // 获取当前套餐信息
@@ -474,7 +512,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 降级套餐
    */
   fastify.post('/quota/downgrade', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -482,7 +520,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
         properties: {
           planType: { 
             type: 'string',
-            enum: ['free', 'pro']
+            enum: ['free', 'basic']
           }
         }
       },
@@ -502,7 +540,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { planType } = request.body
       
       // 获取当前套餐信息
@@ -541,7 +585,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 取消订阅
    */
   fastify.post('/quota/cancel', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       response: {
         200: {
@@ -555,7 +599,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       
       // 获取当前套餐信息
       const currentSubscription = await QuotaService.getUserSubscription(userId)
@@ -593,7 +643,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 退款并取消会员
    */
   fastify.post('/quota/refund', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -623,7 +673,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { reason = 'user_request' } = request.body || {}
       
       const result = await QuotaService.refundAndCancel(userId, reason)
@@ -648,7 +704,7 @@ export async function quotaRoutes(fastify: FastifyInstance) {
    * 记录配额使用（内部API）
    */
   fastify.post('/quota/usage/record', {
-    preHandler: [optionalAuth],
+    preHandler: [requireAuth],
     schema: {
       body: {
         type: 'object',
@@ -686,7 +742,13 @@ export async function quotaRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      const userId = (request as any).user?.id || 1
+      const userId = (request as any).user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: { message: '需要登录才能访问此功能' }
+        })
+      }
       const { quotaType, action, amount = 1, resourceId, resourceType, metadata } = request.body
       
       await QuotaService.recordQuotaUsage(

@@ -27,6 +27,7 @@ export interface GoogleAuthResult {
 export class GoogleOAuthService {
   private oauth2Client: any
   private readonly redirectURI: string
+  private isConfigured: boolean = false
 
   constructor() {
     // 使用与 Better Auth 相同的配置
@@ -35,8 +36,12 @@ export class GoogleOAuthService {
     this.redirectURI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/auth/callback/google"
 
     if (!clientId || !clientSecret) {
-      throw new Error('Google OAuth credentials not configured')
+      console.warn('⚠️ Google OAuth credentials not configured. Google login will be disabled.')
+      this.isConfigured = false
+      return
     }
+    
+    this.isConfigured = true
 
     this.oauth2Client = new google.auth.OAuth2(
       clientId,
@@ -115,20 +120,20 @@ export class GoogleOAuthService {
    * 处理 Google 登录/注册流程
    */
   async handleGoogleAuth(code: string): Promise<GoogleAuthResult> {
+    // 先获取Google用户信息（在事务外）
+    const googleUser = await this.getUserInfoFromCode(code)
+    
     const client = await pool.connect()
     
     try {
       await client.query('BEGIN')
-
-      // 获取 Google 用户信息
-      const googleUser = await this.getUserInfoFromCode(code)
 
       // 检查是否已存在 Google 账户关联
       let existingAccount = await this.findGoogleAccount(googleUser.id)
       
       if (existingAccount) {
         // 已存在的 Google 账户，直接返回用户信息
-        const user = await userService.findUserById(existingAccount.userId)
+        const user = await userService.findUserById(existingAccount.user_id)
         if (!user) {
           throw new Error('Associated user not found')
         }
@@ -147,13 +152,13 @@ export class GoogleOAuthService {
       
       if (existingUser) {
         // 邮箱已存在，关联 Google 账户到现有用户
-        await this.createGoogleAccount(googleUser, existingUser.id)
+        await this.createGoogleAccount(googleUser, existingUser.id, client)
         
         // 更新用户头像（如果没有设置）
         if (!existingUser.image && googleUser.picture) {
           existingUser = await userService.updateUser(existingUser.id, {
             image: googleUser.picture,
-            emailVerified: googleUser.verified_email
+            email_verified: googleUser.verified_email
           }) || existingUser
         }
 
@@ -174,13 +179,24 @@ export class GoogleOAuthService {
         email: googleUser.email,
         name: googleUser.name || googleUser.email.split('@')[0],
         image: googleUser.picture,
-        emailVerified: googleUser.verified_email
+        email_verified: googleUser.verified_email
       }
 
-      const newUser = await userService.createUser(newUserData)
-      await this.createGoogleAccount(googleUser, newUser.id)
+      const newUser = await userService.createUser(newUserData, client)
+      logger.info('User created in database', undefined, { 
+        userId: newUser.id, 
+        email: newUser.email,
+        plan: newUser.plan 
+      }, LogCategory.USER)
+      
+      await this.createGoogleAccount(googleUser, newUser.id, client)
+      logger.info('Google account linked', undefined, { 
+        userId: newUser.id, 
+        googleId: googleUser.id 
+      }, LogCategory.USER)
 
       await client.query('COMMIT')
+      logger.info('Transaction committed for new user', undefined, { userId: newUser.id }, LogCategory.USER)
       logger.info('New user created with Google account', undefined, { 
         userId: newUser.id, 
         email: newUser.email 
@@ -202,12 +218,12 @@ export class GoogleOAuthService {
   /**
    * 查找 Google 账户关联
    */
-  private async findGoogleAccount(googleId: string): Promise<{ userId: string } | null> {
+  private async findGoogleAccount(googleId: string): Promise<{ user_id: string } | null> {
     try {
       const query = `
-        SELECT "userId"
-        FROM account
-        WHERE "providerId" = 'google' AND "accountId" = $1
+        SELECT user_id
+        FROM accounts
+        WHERE provider = 'google' AND provider_account_id = $1
       `
       
       const result = await pool.query(query, [googleId])
@@ -216,7 +232,7 @@ export class GoogleOAuthService {
         return null
       }
 
-      return { userId: result.rows[0].userId }
+      return { user_id: result.rows[0].user_id }
     } catch (error) {
       logger.error('Failed to find Google account', error as Error, { googleId }, LogCategory.USER)
       throw new Error('Database query failed')
@@ -226,10 +242,10 @@ export class GoogleOAuthService {
   /**
    * 创建 Google 账户关联
    */
-  private async createGoogleAccount(googleUser: GoogleUserInfo, userId: string): Promise<void> {
+  private async createGoogleAccount(googleUser: GoogleUserInfo, userId: string, client?: any): Promise<void> {
     try {
       const query = `
-        INSERT INTO account (id, "accountId", "providerId", "userId", "accessToken", "refreshToken", "expiresAt")
+        INSERT INTO accounts (id, provider_account_id, provider, user_id, access_token, refresh_token, expires_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
       `
       
@@ -243,7 +259,8 @@ export class GoogleOAuthService {
         null  // expiresAt
       ]
 
-      await pool.query(query, values)
+      const dbClient = client || pool
+      await dbClient.query(query, values)
       logger.info('Google account created', undefined, { userId, googleId: googleUser.id }, LogCategory.USER)
     } catch (error) {
       logger.error('Failed to create Google account', error as Error, { 
@@ -261,8 +278,8 @@ export class GoogleOAuthService {
     try {
       const query = `
         SELECT 1
-        FROM account
-        WHERE "userId" = $1 AND "providerId" = 'google'
+        FROM accounts
+        WHERE user_id = $1 AND provider = 'google'
         LIMIT 1
       `
       
@@ -280,8 +297,8 @@ export class GoogleOAuthService {
   async unlinkGoogleAccount(userId: string): Promise<boolean> {
     try {
       const query = `
-        DELETE FROM account
-        WHERE "userId" = $1 AND "providerId" = 'google'
+        DELETE FROM accounts
+        WHERE user_id = $1 AND provider = 'google'
       `
       
       const result = await pool.query(query, [userId])
@@ -306,4 +323,33 @@ export class GoogleOAuthService {
   }
 }
 
-export const googleOAuthService = new GoogleOAuthService()
+// 创建一个延迟初始化的实例
+class GoogleOAuthServiceWrapper {
+  private instance: GoogleOAuthService | null = null
+  
+  public getInstance(): GoogleOAuthService | null {
+    if (!this.instance) {
+      try {
+        this.instance = new GoogleOAuthService()
+      } catch (error) {
+        console.warn('Google OAuth service not available:', error)
+      }
+    }
+    return this.instance
+  }
+  
+  // 代理所有方法调用
+  [key: string]: any
+}
+
+// 创建代理对象
+export const googleOAuthService = new Proxy(new GoogleOAuthServiceWrapper(), {
+  get(target, prop) {
+    const instance = target.getInstance()
+    if (!instance) {
+      console.warn(`Google OAuth service not available. Method '${String(prop)}' cannot be called.`)
+      return () => { throw new Error('Google OAuth not configured') }
+    }
+    return instance[prop as keyof GoogleOAuthService]
+  }
+})

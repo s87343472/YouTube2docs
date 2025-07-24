@@ -15,6 +15,12 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
+    // 添加认证令牌
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    
     console.log(`🌐 API Request: ${config.method?.toUpperCase()} ${config.url}`)
     return config
   },
@@ -32,6 +38,24 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('❌ API Response Error:', error?.response?.data || error.message)
+    
+    // 处理 401 未授权错误
+    if (error.response?.status === 401) {
+      // 清除本地存储的令牌
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      
+      // 某些页面不需要强制登录
+      const publicPages = ['/pricing', '/about', '/']
+      const currentPath = window.location.pathname
+      const isPublicPage = publicPages.some(page => currentPath.includes(page))
+      
+      // 如果不是登录页面且不是公开页面，跳转到登录页
+      if (!window.location.pathname.includes('/login') && !isPublicPage) {
+        window.location.href = '/login?error=session_expired'
+      }
+    }
+    
     return Promise.reject(error)
   }
 )

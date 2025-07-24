@@ -28,7 +28,7 @@ export interface VideoCacheEntry {
 export interface CacheAccessLog {
   id: number
   cacheId: number
-  userId: number
+  userId: string
   accessType: 'create' | 'reuse'
   processId?: string
   ipAddress?: string
@@ -129,7 +129,7 @@ export class VideoCacheService {
   static async saveToCache(
     youtubeUrl: string,
     resultData: any,
-    userId: number,
+    userId: string,
     options: {
       videoTitle?: string
       videoDuration?: number
@@ -144,6 +144,8 @@ export class VideoCacheService {
     try {
       const urlHash = this.generateUrlHash(youtubeUrl)
       const normalizedUrl = this.normalizeYouTubeUrl(youtubeUrl)
+      
+      // 直接使用userId（现在数据库字段类型为VARCHAR(50)）
       
       // 设置默认过期时间（30天）
       const defaultExpiresAt = new Date()
@@ -166,7 +168,7 @@ export class VideoCacheService {
         options.videoChannel,
         JSON.stringify(resultData),
         options.processingCost || 0,
-        userId,
+        userId, // Now database accepts VARCHAR(50)
         options.expiresAt || defaultExpiresAt
       ])
 
@@ -214,7 +216,7 @@ export class VideoCacheService {
    */
   static async useCache(
     cacheId: number,
-    userId: number,
+    userId: string,
     options: {
       processId?: string
       ipAddress?: string
@@ -232,7 +234,7 @@ export class VideoCacheService {
         WHERE id = $1
       `, [cacheId])
 
-      // 记录访问日志
+      // 记录访问日志（logCacheAccess内部已经处理userId转换）
       await this.logCacheAccess(cacheId, userId, 'reuse', options)
 
       logger.info('Video cache accessed', {
@@ -251,7 +253,7 @@ export class VideoCacheService {
    */
   static async logCacheAccess(
     cacheId: number,
-    userId: number,
+    userId: string,
     accessType: 'create' | 'reuse',
     options: {
       processId?: string
@@ -260,13 +262,15 @@ export class VideoCacheService {
     } = {}
   ): Promise<void> {
     try {
+      // 直接使用userId（现在数据库字段类型为VARCHAR(50)）
+      
       await pool.query(`
         INSERT INTO video_cache_access_logs (
           cache_id, user_id, access_type, process_id, ip_address, user_agent
         ) VALUES ($1, $2, $3, $4, $5, $6)
       `, [
         cacheId,
-        userId,
+        userId, // Now database accepts VARCHAR(50)
         accessType,
         options.processId,
         options.ipAddress,
@@ -371,12 +375,14 @@ export class VideoCacheService {
   /**
    * 获取用户的缓存使用情况
    */
-  static async getUserCacheUsage(userId: number): Promise<{
+  static async getUserCacheUsage(userId: string): Promise<{
     createdCount: number
     reusedCount: number
     totalCostSaved: number
   }> {
     try {
+      // 直接使用userId（现在数据库字段类型为VARCHAR(50)）
+
       // 用户创建的缓存数量
       const createdResult = await pool.query(`
         SELECT COUNT(*) as created_count

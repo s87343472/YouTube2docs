@@ -169,33 +169,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
     })
   }
 
-  // 节点渲染自定义
-  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const label = node.name
-    const fontSize = Math.max(12 / globalScale, 3)
-    ctx.font = `${fontSize}px Arial`
-    
-    // 绘制节点圆圈
-    ctx.fillStyle = getNodeColor(node)
-    ctx.beginPath()
-    ctx.arc(node.x, node.y, getNodeSize(node), 0, 2 * Math.PI, false)
-    ctx.fill()
-    
-    // 添加白色边框
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 2 / globalScale
-    ctx.stroke()
-    
-    // 绘制标签
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#333333'
-    
-    // 如果缩放比例较大，显示标签
-    if (globalScale > 0.5) {
-      ctx.fillText(label, node.x, node.y + getNodeSize(node) + fontSize + 4)
-    }
-  }, [])
+  // 移除自定义节点渲染，使用默认渲染以确保可视化正常显示
 
   // 组件挂载时自适应视图
   useEffect(() => {
@@ -289,13 +263,9 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
         <ForceGraph2D
           ref={graphRef}
           graphData={graphData}
-          nodeCanvasObject={nodeCanvasObject}
-          nodePointerAreaPaint={(node, color, ctx) => {
-            ctx.fillStyle = color
-            ctx.beginPath()
-            ctx.arc(node.x!, node.y!, getNodeSize(node as KnowledgeNode) + 2, 0, 2 * Math.PI, false)
-            ctx.fill()
-          }}
+          nodeColor={(node) => getNodeColor(node as KnowledgeNode)}
+          nodeVal={(node) => getNodeSize(node as KnowledgeNode)}
+          nodeLabel={(node) => (node as KnowledgeNode).name}
           onNodeClick={handleNodeClick}
           onNodeHover={(node, prevNode) => handleNodeHover(node as KnowledgeNode | null, prevNode as KnowledgeNode | undefined)}
           linkColor={link => getLinkColor(link as KnowledgeLink)}
@@ -309,7 +279,7 @@ export const KnowledgeGraphVisualization: React.FC<Props> = ({
           height={graphHeight}
           width={graphWidth}
           backgroundColor="#fafafa"
-          nodeRelSize={1}
+          nodeRelSize={6}
           enableNodeDrag={true}
           enableZoomInteraction={true}
           enablePanInteraction={true}

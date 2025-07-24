@@ -33,11 +33,8 @@ export class UserPlanIntegrationService {
         return null
       }
 
-      // 从字符串ID转换为数字ID（用于旧系统兼容）
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
-      
       // 获取订阅信息
-      const subscription = await QuotaService.getUserSubscription(numericUserId)
+      const subscription = await QuotaService.getUserSubscription(userId)
       
       // 获取配额计划信息
       let quotaPlan: QuotaPlan | null = null
@@ -74,10 +71,10 @@ export class UserPlanIntegrationService {
       await client.query('BEGIN')
 
       // 获取或创建数字用户ID
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
+      // 直接使用字符串userId
       
       // 检查是否已有订阅
-      const existingSubscription = await QuotaService.getUserSubscription(numericUserId)
+      const existingSubscription = await QuotaService.getUserSubscription(userId)
       if (existingSubscription) {
         logger.info('User already has subscription', undefined, { userId, planType: existingSubscription.planType }, LogCategory.USER)
         await client.query('COMMIT')
@@ -92,7 +89,7 @@ export class UserPlanIntegrationService {
 
       // 创建免费订阅或指定计划的订阅
       if (initialPlan === 'free') {
-        await QuotaService.createFreeSubscription(numericUserId)
+        await QuotaService.createFreeSubscription(userId)
       } else {
         // 创建付费订阅（测试或特殊情况）
         const expiresAt = new Date()
@@ -101,13 +98,13 @@ export class UserPlanIntegrationService {
         await client.query(`
           INSERT INTO user_subscriptions (user_id, plan_type, status, expires_at, payment_method)
           VALUES ($1, $2, 'active', $3, 'system_init')
-        `, [numericUserId, initialPlan, expiresAt])
+        `, [userId, initialPlan, expiresAt])
       }
 
       // 同步用户表中的计划信息
       await userService.updateUser(userId, {
         plan: initialPlan as any,
-        monthlyQuota: quotaPlan.monthlyVideoQuota
+        monthly_quota: quotaPlan.monthlyVideoQuota
       })
 
       await client.query('COMMIT')
@@ -127,10 +124,10 @@ export class UserPlanIntegrationService {
    */
   async syncUserPlanStatus(userId: string): Promise<void> {
     try {
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
+      // 直接使用字符串userId
       
       // 获取最新的订阅信息
-      const subscription = await QuotaService.getUserSubscription(numericUserId)
+      const subscription = await QuotaService.getUserSubscription(userId)
       if (!subscription) {
         logger.warn('No subscription found for user during sync', undefined, { userId }, LogCategory.USER)
         return
@@ -146,13 +143,13 @@ export class UserPlanIntegrationService {
       // 更新 user 表中的相关字段
       await userService.updateUser(userId, {
         plan: subscription.planType as any,
-        monthlyQuota: quotaPlan.monthlyVideoQuota
+        monthly_quota: quotaPlan.monthlyVideoQuota
       })
 
       logger.info('User plan status synced', undefined, { 
         userId, 
         planType: subscription.planType,
-        monthlyQuota: quotaPlan.monthlyVideoQuota 
+        monthly_quota: quotaPlan.monthlyVideoQuota 
       }, LogCategory.USER)
     } catch (error) {
       logger.error('Failed to sync user plan status', error as Error, { userId }, LogCategory.USER)
@@ -172,10 +169,10 @@ export class UserPlanIntegrationService {
     userAgent?: string
   ): Promise<{ allowed: boolean; reason?: string }> {
     try {
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
+      // 直接使用字符串userId
       
       // 检查配额
-      const quotaCheck = await QuotaService.checkQuota(numericUserId, quotaType, amount, metadata)
+      const quotaCheck = await QuotaService.checkQuota(userId, quotaType, amount, metadata)
       
       if (!quotaCheck.allowed) {
         logger.warn('Quota check failed', undefined, { 
@@ -193,7 +190,7 @@ export class UserPlanIntegrationService {
 
       // 记录配额使用
       await QuotaService.recordQuotaUsage(
-        numericUserId,
+        userId,
         quotaType,
         'usage',
         amount,
@@ -234,10 +231,10 @@ export class UserPlanIntegrationService {
     paymentMethod: string = 'unknown'
   ): Promise<UserSubscription> {
     try {
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
+      // 直接使用字符串userId
       
       // 升级订阅
-      const newSubscription = await QuotaService.upgradeUserPlan(numericUserId, newPlanType, paymentMethod)
+      const newSubscription = await QuotaService.upgradeUserPlan(userId, newPlanType, paymentMethod)
       
       // 同步用户表
       await this.syncUserPlanStatus(userId)
@@ -269,7 +266,7 @@ export class UserPlanIntegrationService {
     alerts: any[]
   }> {
     try {
-      const numericUserId = await this.getOrCreateNumericUserId(userId)
+      // 直接使用字符串userId
       
       // 获取基础信息
       const user = await userService.findUserById(userId)
@@ -278,14 +275,14 @@ export class UserPlanIntegrationService {
       }
 
       // 获取订阅和计划信息
-      const subscription = await QuotaService.getUserSubscription(numericUserId)
+      const subscription = await QuotaService.getUserSubscription(userId)
       const quotaPlan = subscription ? await QuotaService.getQuotaPlan(subscription.planType) : null
       
       // 获取配额使用情况
-      const quotaUsages = await QuotaService.getUserAllQuotaUsage(numericUserId)
+      const quotaUsages = await QuotaService.getUserAllQuotaUsage(userId)
       
       // 获取配额预警
-      const alerts = await QuotaService.getUserQuotaAlerts(numericUserId)
+      const alerts = await QuotaService.getUserQuotaAlerts(userId)
 
       return {
         user,
@@ -300,118 +297,6 @@ export class UserPlanIntegrationService {
     }
   }
 
-  /**
-   * 获取或创建数字用户ID（兼容旧系统）
-   * 新认证系统使用UUID，旧配额系统使用自增ID
-   */
-  private async getOrCreateNumericUserId(stringUserId: string): Promise<number> {
-    try {
-      // 检查是否已有映射关系
-      let result = await pool.query(`
-        SELECT numeric_id FROM user_id_mapping WHERE string_id = $1
-      `, [stringUserId])
-
-      if (result.rows.length > 0) {
-        return result.rows[0].numeric_id
-      }
-
-      // 创建新的映射关系
-      result = await pool.query(`
-        INSERT INTO user_id_mapping (string_id)
-        VALUES ($1)
-        RETURNING numeric_id
-      `, [stringUserId])
-
-      const numericId = result.rows[0].numeric_id
-      
-      logger.info('Created numeric user ID mapping', undefined, { 
-        stringUserId, 
-        numericId 
-      }, LogCategory.USER)
-
-      return numericId
-    } catch (error) {
-      logger.error('Failed to get or create numeric user ID', error as Error, { stringUserId }, LogCategory.USER)
-      throw new Error('用户ID映射失败')
-    }
-  }
-
-  /**
-   * 根据数字ID获取字符串ID
-   */
-  async getStringUserId(numericUserId: number): Promise<string | null> {
-    try {
-      const result = await pool.query(`
-        SELECT string_id FROM user_id_mapping WHERE numeric_id = $1
-      `, [numericUserId])
-
-      return result.rows[0]?.string_id || null
-    } catch (error) {
-      logger.error('Failed to get string user ID', error as Error, { numericUserId }, LogCategory.USER)
-      return null
-    }
-  }
-
-  /**
-   * 批量迁移现有用户数据到新认证系统
-   * 这个方法用于系统升级时的数据迁移
-   */
-  async migrateExistingUsers(): Promise<PlanMigrationResult> {
-    const client = await pool.connect()
-    const errors: string[] = []
-    let migratedCount = 0
-
-    try {
-      await client.query('BEGIN')
-
-      // 获取所有旧系统中的订阅用户
-      const existingSubscriptions = await client.query(`
-        SELECT DISTINCT user_id FROM user_subscriptions WHERE status = 'active'
-      `)
-
-      for (const sub of existingSubscriptions.rows) {
-        try {
-          const numericUserId = sub.user_id
-          
-          // 检查是否已有对应的新系统用户
-          const stringUserId = await this.getStringUserId(numericUserId)
-          if (stringUserId) {
-            // 已经迁移过
-            continue
-          }
-
-          // 创建映射关系（这里假设有其他方式建立对应关系）
-          // 实际实现中需要根据具体情况调整
-          logger.warn('Found orphaned numeric user ID during migration', undefined, { numericUserId }, LogCategory.USER)
-          
-        } catch (error) {
-          errors.push(`Failed to migrate user ${sub.user_id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        }
-      }
-
-      await client.query('COMMIT')
-      
-      const result: PlanMigrationResult = {
-        success: errors.length === 0,
-        migratedCount,
-        errors
-      }
-
-      logger.info('User migration completed', undefined, result, LogCategory.USER)
-      return result
-    } catch (error) {
-      await client.query('ROLLBACK')
-      logger.error('User migration failed', error as Error, {}, LogCategory.USER)
-      
-      return {
-        success: false,
-        migratedCount: 0,
-        errors: [`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`]
-      }
-    } finally {
-      client.release()
-    }
-  }
 
   /**
    * 健康检查：验证用户认证和付费系统的一致性
@@ -432,7 +317,7 @@ export class UserPlanIntegrationService {
 
     try {
       // 统计总用户数
-      const userCountResult = await pool.query('SELECT COUNT(*) as count FROM "user"')
+      const userCountResult = await pool.query('SELECT COUNT(*) as count FROM users')
       totalUsers = parseInt(userCountResult.rows[0].count)
 
       // 统计有订阅的用户数
@@ -446,9 +331,8 @@ export class UserPlanIntegrationService {
       // 检查数据一致性
       const inconsistentResult = await pool.query(`
         SELECT u.id, u.plan, s.plan_type
-        FROM "user" u
-        LEFT JOIN user_id_mapping m ON u.id = m.string_id
-        LEFT JOIN user_subscriptions s ON m.numeric_id = s.user_id AND s.status = 'active'
+        FROM users u
+        LEFT JOIN user_subscriptions s ON u.id = s.user_id AND s.status = 'active'
         WHERE (u.plan IS NOT NULL AND s.plan_type IS NULL)
            OR (u.plan IS NULL AND s.plan_type IS NOT NULL)
            OR (u.plan != s.plan_type)

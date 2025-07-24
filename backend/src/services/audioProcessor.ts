@@ -230,7 +230,7 @@ export class AudioProcessor {
   /**
    * 获取音频时长
    */
-  private static async getAudioDuration(audioPath: string): Promise<number> {
+  static async getAudioDuration(audioPath: string): Promise<number> {
     try {
       const { stdout } = await execAsync(
         `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${audioPath}"`

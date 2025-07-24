@@ -20,9 +20,12 @@ const PricingPage: React.FC = () => {
 
   const loadPlans = async () => {
     try {
+      console.log('Loading plans...')
       const plansData = await QuotaService.getAllPlans()
+      console.log('Plans loaded:', plansData)
       setPlans(plansData)
     } catch (error) {
+      console.error('Error loading plans:', error)
       message.error('加载套餐信息失败')
     } finally {
       setLoading(false)
@@ -31,12 +34,22 @@ const PricingPage: React.FC = () => {
 
   const loadCurrentSubscription = async () => {
     try {
+      // 检查用户是否已登录
+      const token = localStorage.getItem('token')
+      if (!token) {
+        console.log('User not logged in, skipping subscription check')
+        return
+      }
+      
       const subscription = await QuotaService.getUserSubscription()
       if (subscription?.subscription) {
         setCurrentPlan(subscription.subscription.planType)
       }
-    } catch (error) {
-      console.error('Failed to load current subscription:', error)
+    } catch (error: any) {
+      // 忽略401错误，用户未登录是正常情况
+      if (error?.response?.status !== 401) {
+        console.error('Failed to load current subscription:', error)
+      }
     }
   }
 
@@ -56,18 +69,20 @@ const PricingPage: React.FC = () => {
 
   const formatPrice = (monthly: number, yearlyPrice: number) => {
     if (yearly) {
-      return `¥${yearlyPrice}/年`
+      return `$${yearlyPrice}/年`
     }
-    return `¥${monthly}/月`
+    return `$${monthly}/月`
   }
 
   const getPlanIcon = (planType: string) => {
     switch (planType) {
       case 'free':
         return <CheckOutlined />
+      case 'basic':
+        return <CheckOutlined />
       case 'pro':
         return <StarOutlined />
-      case 'max':
+      case 'enterprise':
         return <CrownOutlined />
       default:
         return <CheckOutlined />
@@ -92,11 +107,10 @@ const PricingPage: React.FC = () => {
     if (plan.monthlyDurationQuota === 0) {
       features.push('无限制月度总时长')
     } else {
-      features.push(`月度总时长 ${Math.floor(plan.monthlyDurationQuota / 60)} 小时`)
+      const hours = plan.monthlyDurationQuota / 60
+      features.push(`月度总时长 ${hours >= 1 ? Math.floor(hours) : hours.toFixed(1)} 小时`)
     }
     
-    features.push(`存储空间 ${plan.maxStorageGb}GB`)
-    features.push(`最多分享 ${plan.maxSharedItems} 个内容`)
     
     if (plan.hasPriorityProcessing) {
       features.push('优先处理队列')
@@ -211,9 +225,16 @@ const PricingPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="price-text">
-                  <span className="price">{formatPrice(plan.priceMonthly, plan.priceYearly)}</span>
-                  {yearly && getSavingsText(plan.priceMonthly, plan.priceYearly) && (
-                    <span className="savings">{getSavingsText(plan.priceMonthly, plan.priceYearly)}</span>
+                  {yearly && plan.priceYearly < plan.priceMonthly * 12 ? (
+                    <>
+                      <span className="original-price">${plan.priceMonthly * 12}/年</span>
+                      <span className="price">${plan.priceYearly}/年</span>
+                      <span className="savings">{getSavingsText(plan.priceMonthly, plan.priceYearly)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="price">{formatPrice(plan.priceMonthly, plan.priceYearly)}</span>
+                    </>
                   )}
                 </div>
               )}

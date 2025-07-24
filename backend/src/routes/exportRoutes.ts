@@ -1,9 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { PDFExportService } from '../services/pdfExportService'
+import { MarkdownExportService } from '../services/markdownExportService'
 import { logger, LogCategory } from '../utils/logger'
 import { validators } from '../middleware/validation'
-import { authMiddleware } from '../middleware/auth'
-import { rateLimitMiddleware } from '../middleware/rateLimit'
+import { requireAuth, optionalAuth } from '../middleware/authMiddleware'
+import { exportContentRateLimit } from '../middleware/rateLimitMiddleware'
+import { LearningMaterial } from '../types'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -20,6 +22,11 @@ interface ExportRequest {
     includeGraphs?: boolean
     includeCards?: boolean
     watermark?: string
+    graphImage?: {
+      data: string
+      type: 'canvas' | 'network'
+      caption: string
+    }
   }
 }
 
@@ -32,7 +39,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
   fastify.post('/export/learning-material', {
     preHandler: [
       optionalAuth,
-      rateLimitMiddleware.moderate
+      exportContentRateLimit
     ],
     schema: {
       body: {
@@ -77,8 +84,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
     try {
       const { videoProcessId, format, options = {} } = request.body
       
-      logger.info('Starting learning material export', {
-        requestId: request.requestId,
+      logger.info('Starting learning material export', undefined, {
+        requestId: request.id,
         videoProcessId,
         format,
         options,
@@ -95,7 +102,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
         thumbnail: null
       }
       
-      const mockLearningMaterial = {
+      const mockLearningMaterial: LearningMaterial = {
+        videoInfo: mockVideoInfo,
         summary: {
           keyPoints: [
             'React Hooks是函数组件中使用状态和生命周期的方式',
@@ -104,8 +112,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
             'useContext用于在组件树中共享状态',
             '自定义Hook可以复用状态逻辑'
           ],
-          estimatedStudyTime: '45-60分钟',
-          difficulty: '中级',
+          learningTime: '45-60分钟',
+          difficulty: 'intermediate',
           concepts: [
             { name: 'useState', explanation: '状态Hook，用于在函数组件中添加状态' },
             { name: 'useEffect', explanation: '副作用Hook，用于处理副作用操作' },
@@ -122,7 +130,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
                 'Hooks的设计理念和优势',
                 '函数组件vs类组件',
                 'Hooks的基本规则'
-              ]
+              ],
+              concepts: ['Hooks', '函数组件', '类组件']
             },
             {
               title: 'useState Hook详解',
@@ -131,26 +140,44 @@ export async function exportRoutes(fastify: FastifyInstance) {
                 'useState的基本用法',
                 '状态更新的异步特性',
                 '函数式更新和对象状态'
-              ]
+              ],
+              concepts: ['useState', '状态管理', '异步更新']
             }
           ]
         },
         studyCards: [
           {
+            id: 'card-1',
             title: 'useState基础概念',
             type: 'concept',
             content: 'useState是React提供的Hook，用于在函数组件中添加状态管理功能。',
             difficulty: 'easy',
-            estimatedTime: 3
+            estimatedTime: 3,
+            relatedConcepts: ['React Hooks', '状态管理']
           },
           {
+            id: 'card-2',
             title: 'useEffect使用场景',
             type: 'application',
             content: 'useEffect主要用于处理副作用，如API调用、事件监听、手动DOM操作等。',
             difficulty: 'medium',
-            estimatedTime: 5
+            estimatedTime: 5,
+            relatedConcepts: ['副作用', 'React Hooks']
           }
-        ]
+        ],
+        knowledgeGraph: {
+          nodes: [
+            { id: '1', label: 'React Hooks', type: 'concept', description: 'React函数组件状态管理机制', importance: 5, complexity: 3 },
+            { id: '2', label: 'useState', type: 'concept', description: '状态Hook，用于管理组件状态', importance: 5, complexity: 2 },
+            { id: '3', label: 'useEffect', type: 'concept', description: '副作用Hook，处理异步操作', importance: 5, complexity: 3 },
+            { id: '4', label: 'useContext', type: 'concept', description: '上下文Hook，全局状态共享', importance: 4, complexity: 3 }
+          ],
+          edges: [
+            { id: 'e1', source: '1', target: '2', type: 'supports', strength: 0.9, description: 'useState是React Hooks的核心组成部分' },
+            { id: 'e2', source: '1', target: '3', type: 'supports', strength: 0.9, description: 'useEffect是React Hooks的核心组成部分' },
+            { id: 'e3', source: '1', target: '4', type: 'supports', strength: 0.8, description: 'useContext是React Hooks的核心组成部分' }
+          ]
+        }
       }
       
       let exportResult
@@ -163,19 +190,30 @@ export async function exportRoutes(fastify: FastifyInstance) {
             theme: options.theme || 'light',
             includeGraphs: options.includeGraphs !== false,
             includeCards: options.includeCards !== false,
-            watermark: options.watermark
+            watermark: options.watermark,
+            graphImage: options.graphImage
+          }
+        )
+      } else if (format === 'markdown') {
+        exportResult = await MarkdownExportService.exportLearningMaterial(
+          mockVideoInfo,
+          mockLearningMaterial,
+          {
+            includeGraphs: options.includeGraphs !== false,
+            includeCards: options.includeCards !== false,
+            graphImage: options.graphImage
           }
         )
       } else {
-        // TODO: 实现Markdown和HTML导出
+        // TODO: 实现HTML导出
         throw new Error(`Format ${format} not yet implemented`)
       }
       
       // 生成下载URL
       const downloadUrl = `/uploads/exports/${path.basename(exportResult.filePath)}`
       
-      logger.info('Learning material export completed', {
-        requestId: request.requestId,
+      logger.info('Learning material export completed', undefined, {
+        requestId: request.id,
         videoProcessId,
         format,
         fileName: exportResult.fileName,
@@ -196,7 +234,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
       
     } catch (error) {
       logger.error('Learning material export failed', error as Error, {
-        requestId: request.requestId,
+        requestId: request.id,
         videoProcessId: request.body.videoProcessId,
         format: request.body.format
       }, LogCategory.SERVICE)
@@ -218,7 +256,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
   fastify.post('/export/study-cards', {
     preHandler: [
       optionalAuth,
-      rateLimitMiddleware.moderate
+      exportContentRateLimit
     ],
     schema: {
       body: {
@@ -250,8 +288,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
     try {
       const { videoProcessId, format = 'pdf', options = {} } = request.body
       
-      logger.info('Starting study cards export', {
-        requestId: request.requestId,
+      logger.info('Starting study cards export', undefined, {
+        requestId: request.id,
         videoProcessId,
         format,
         options
@@ -267,32 +305,40 @@ export async function exportRoutes(fastify: FastifyInstance) {
       
       const mockStudyCards = [
         {
+          id: 'card-1',
           title: 'useState基础概念',
-          type: 'concept',
+          type: 'concept' as const,
           content: 'useState是React提供的Hook，用于在函数组件中添加状态管理功能。它返回一个数组，包含当前状态值和更新状态的函数。',
-          difficulty: 'easy',
-          estimatedTime: 3
+          difficulty: 'easy' as const,
+          estimatedTime: 3,
+          relatedConcepts: ['React Hooks', '状态管理']
         },
         {
+          id: 'card-2',
           title: 'useEffect使用场景',
-          type: 'application',
+          type: 'application' as const,
           content: 'useEffect主要用于处理副作用，如API调用、事件监听、手动DOM操作等。可以通过依赖数组控制执行时机。',
-          difficulty: 'medium',
-          estimatedTime: 5
+          difficulty: 'medium' as const,
+          estimatedTime: 5,
+          relatedConcepts: ['副作用', 'React Hooks', '生命周期']
         },
         {
+          id: 'card-3',
           title: 'useContext应用',
-          type: 'practical',
+          type: 'application' as const,
           content: 'useContext用于消费React Context，避免props drilling。需要配合createContext使用，可以在组件树中共享数据。',
-          difficulty: 'medium',
-          estimatedTime: 4
+          difficulty: 'medium' as const,
+          estimatedTime: 4,
+          relatedConcepts: ['Context API', '状态共享', 'React Hooks']
         },
         {
+          id: 'card-4',
           title: '自定义Hook创建',
-          type: 'advanced',
+          type: 'application' as const,
           content: '自定义Hook是以use开头的函数，可以调用其他Hook。用于封装和复用状态逻辑，提高代码复用性。',
-          difficulty: 'hard',
-          estimatedTime: 7
+          difficulty: 'hard' as const,
+          estimatedTime: 7,
+          relatedConcepts: ['代码复用', 'React Hooks', '设计模式']
         }
       ]
       
@@ -347,7 +393,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
       
     } catch (error) {
       logger.error('Study cards export failed', error as Error, {
-        requestId: request.requestId,
+        requestId: request.id,
         videoProcessId: request.body.videoProcessId
       }, LogCategory.SERVICE)
       
@@ -387,8 +433,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
       // TODO: 从数据库获取用户的导出历史
       const { page = 1, limit = 20, format } = request.query
       
-      logger.info('Fetching export history', {
-        requestId: request.requestId,
+      logger.info('Fetching export history', undefined, {
+        requestId: request.id,
         page,
         limit,
         format,
@@ -438,7 +484,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
       
     } catch (error) {
       logger.error('Failed to fetch export history', error as Error, {
-        requestId: request.requestId,
+        requestId: request.id,
         userId: request.user?.id
       }, LogCategory.SERVICE)
       
@@ -460,8 +506,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
     preHandler: [requireAuth]
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      logger.info('Starting export files cleanup', {
-        requestId: request.requestId,
+      logger.info('Starting export files cleanup', undefined, {
+        requestId: request.id,
         userId: request.user?.id
       }, LogCategory.SERVICE)
       
@@ -481,7 +527,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
       
     } catch (error) {
       logger.error('Export cleanup failed', error as Error, {
-        requestId: request.requestId
+        requestId: request.id
       }, LogCategory.SERVICE)
       
       reply.code(500).send({

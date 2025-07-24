@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { 
   Download, 
   Share2, 
@@ -12,9 +12,11 @@ import {
   ExternalLink,
   Brain,
   Network,
-  CheckSquare
+  CheckSquare,
+  Camera
 } from 'lucide-react'
 import KnowledgeGraphVisualization from '../components/KnowledgeGraphVisualization'
+import CanvasKnowledgeGraph, { CanvasKnowledgeGraphRef } from '../components/CanvasKnowledgeGraph'
 import { conceptExplanationService } from '../services/conceptExplanationService'
 import { ShareModal } from '../components/ShareModal'
 
@@ -22,6 +24,10 @@ export const ResultPage = () => {
   const { id } = useParams()
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null)
   const [showShareModal, setShowShareModal] = useState(false)
+  const [useCanvasView, setUseCanvasView] = useState(true) // 默认使用Canvas视图
+  const [isCapturingImage, setIsCapturingImage] = useState(false)
+  
+  const canvasGraphRef = useRef<CanvasKnowledgeGraphRef>(null)
 
   // 知识图谱数据
   const knowledgeGraphData = {
@@ -194,6 +200,163 @@ export const ResultPage = () => {
       alert('导出失败，请稍后重试')
     }
   }, [id])
+
+  // 处理知识图谱图片导出
+  const handleExportGraphImage = useCallback(async () => {
+    if (!canvasGraphRef.current) {
+      alert('Canvas图谱组件未就绪，请稍后重试')
+      return
+    }
+
+    setIsCapturingImage(true)
+    try {
+      await canvasGraphRef.current.downloadImage('knowledge-graph', {
+        format: 'png',
+        quality: 0.95,
+        scale: 2,
+        backgroundColor: '#ffffff'
+      })
+    } catch (error) {
+      console.error('Graph image export failed:', error)
+      alert('图片导出失败，请稍后重试')
+    } finally {
+      setIsCapturingImage(false)
+    }
+  }, [])
+
+  // 增强版PDF导出 - 包含知识图谱图片
+  const handleExportPDFWithGraph = useCallback(async (type: 'complete' | 'cards') => {
+    let graphImageData: string | null = null
+    
+    // 如果使用Canvas视图，先捕获图片
+    if (useCanvasView && canvasGraphRef.current) {
+      setIsCapturingImage(true)
+      try {
+        graphImageData = await canvasGraphRef.current.captureAsImage({
+          format: 'png',
+          quality: 0.95,
+          scale: 2,
+          backgroundColor: '#ffffff'
+        })
+      } catch (error) {
+        console.error('Failed to capture graph image:', error)
+        // 即使图片捕获失败，也继续进行PDF导出
+      } finally {
+        setIsCapturingImage(false)
+      }
+    }
+
+    try {
+      const endpoint = type === 'complete' 
+        ? '/api/export/learning-material' 
+        : '/api/export/study-cards'
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          videoProcessId: id || 'demo-123',
+          format: 'pdf',
+          options: {
+            theme: 'light',
+            includeGraphs: true,
+            includeCards: type === 'complete',
+            watermark: '由YouTube智学生成',
+            graphImage: graphImageData ? {
+              data: graphImageData,
+              type: useCanvasView ? 'canvas' : 'network',
+              caption: `知识图谱 - ${useCanvasView ? 'Canvas视图' : '网络视图'}`
+            } : null
+          }
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // 创建下载链接
+        const link = document.createElement('a')
+        link.href = result.data.downloadUrl
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        console.log('PDF export successful:', result.data)
+      } else {
+        alert('导出失败：' + (result.error?.message || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('导出失败，请稍后重试')
+    }
+  }, [id, useCanvasView])
+
+  // 处理Markdown导出
+  const handleExportMarkdown = useCallback(async () => {
+    let graphImageData: string | null = null
+    
+    // 如果使用Canvas视图，先捕获图片
+    if (useCanvasView && canvasGraphRef.current) {
+      setIsCapturingImage(true)
+      try {
+        graphImageData = await canvasGraphRef.current.captureAsImage({
+          format: 'png',
+          quality: 0.95,
+          scale: 2,
+          backgroundColor: '#ffffff'
+        })
+      } catch (error) {
+        console.error('Failed to capture graph image:', error)
+        // 即使图片捕获失败，也继续进行导出
+      } finally {
+        setIsCapturingImage(false)
+      }
+    }
+
+    try {
+      const response = await fetch('/api/export/learning-material', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          videoProcessId: id || 'demo-123',
+          format: 'markdown',
+          options: {
+            includeGraphs: true,
+            includeCards: true,
+            graphImage: graphImageData ? {
+              data: graphImageData,
+              type: useCanvasView ? 'canvas' : 'network',
+              caption: `知识图谱 - ${useCanvasView ? 'Canvas视图' : '网络视图'}`
+            } : null
+          }
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // 创建下载链接
+        const link = document.createElement('a')
+        link.href = result.data.downloadUrl
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        console.log('Markdown export successful:', result.data)
+      } else {
+        alert('导出失败：' + (result.error?.message || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Markdown export failed:', error)
+      alert('Markdown导出失败，请稍后重试')
+    }
+  }, [id, useCanvasView])
 
   // 模拟数据
   const mockResult = {
@@ -372,33 +535,82 @@ export const ResultPage = () => {
                   <Network className="h-5 w-5 text-purple-600 mr-2" />
                   <h2 className="text-xl font-semibold text-gray-900">交互式知识图谱</h2>
                 </div>
-                <div className="text-sm text-gray-500">
-                  点击节点查看AI解释
+                <div className="flex items-center space-x-4">
+                  {/* 视图切换选项 */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">视图模式:</span>
+                    <button
+                      onClick={() => setUseCanvasView(true)}
+                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                        useCanvasView 
+                          ? 'bg-purple-100 text-purple-700 font-medium' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      Canvas视图
+                    </button>
+                    <button
+                      onClick={() => setUseCanvasView(false)}
+                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                        !useCanvasView 
+                          ? 'bg-purple-100 text-purple-700 font-medium' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      网络视图
+                    </button>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    点击节点查看AI解释
+                  </div>
                 </div>
               </div>
               
               {/* 知识图谱可视化 */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <KnowledgeGraphVisualization
-                  graphData={knowledgeGraphData}
-                  onNodeClick={handleConceptClick}
-                  onRequestExplanation={handleRequestExplanation}
-                  height={500}
-                  width={undefined} // 自适应宽度
-                  className="w-full"
-                />
+              <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: '600px' }}>
+                {useCanvasView ? (
+                  <CanvasKnowledgeGraph
+                    ref={canvasGraphRef}
+                    graphData={knowledgeGraphData}
+                    onNodeClick={handleConceptClick}
+                    onRequestExplanation={handleRequestExplanation}
+                    className="w-full h-full"
+                  />
+                ) : (
+                  <KnowledgeGraphVisualization
+                    graphData={knowledgeGraphData}
+                    onNodeClick={handleConceptClick}
+                    onRequestExplanation={handleRequestExplanation}
+                    height={600}
+                    width={undefined} // 自适应宽度
+                    className="w-full"
+                  />
+                )}
               </div>
               
               {/* 图谱说明 */}
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">如何使用知识图谱：</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• <strong>拖拽节点</strong>：重新排列图谱布局</li>
-                  <li>• <strong>滚轮缩放</strong>：放大或缩小视图</li>
-                  <li>• <strong>点击节点</strong>：查看概念的详细AI解释</li>
-                  <li>• <strong>悬停节点</strong>：查看概念类型和重要度</li>
-                  <li>• <strong>连线颜色</strong>：红色=依赖关系，紫色=相关关系，青色=包含关系</li>
-                </ul>
+                <h4 className="font-medium text-gray-900 mb-2">
+                  {useCanvasView ? 'Canvas视图使用说明：' : '网络视图使用说明：'}
+                </h4>
+                {useCanvasView ? (
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li>• <strong>拖拽卡片</strong>：自由重新排列节点位置</li>
+                    <li>• <strong>缩放视图</strong>：使用右下角控制器或滚轮缩放</li>
+                    <li>• <strong>点击卡片</strong>：查看概念的详细信息和AI解释</li>
+                    <li>• <strong>迷你地图</strong>：右下角迷你地图快速导航</li>
+                    <li>• <strong>卡片颜色</strong>：蓝色=核心概念，绿色=子主题，黄色=相关资源</li>
+                    <li>• <strong>连线颜色</strong>：红色=依赖关系，紫色=相关关系，青色=包含关系</li>
+                  </ul>
+                ) : (
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li>• <strong>拖拽节点</strong>：重新排列图谱布局</li>
+                    <li>• <strong>滚轮缩放</strong>：放大或缩小视图</li>
+                    <li>• <strong>点击节点</strong>：查看概念的详细AI解释</li>
+                    <li>• <strong>悬停节点</strong>：查看概念类型和重要度</li>
+                    <li>• <strong>连线颜色</strong>：红色=依赖关系，紫色=相关关系，青色=包含关系</li>
+                  </ul>
+                )}
               </div>
             </div>
           </div>
@@ -442,32 +654,78 @@ export const ResultPage = () => {
               <h3 className="font-semibold text-gray-900 mb-4">下载选项</h3>
               <div className="space-y-3">
                 <button 
-                  onClick={() => handleExportPDF('complete')}
-                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => handleExportPDFWithGraph('complete')}
+                  disabled={isCapturingImage}
+                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <FileText className="h-5 w-5 text-red-600 mr-3" />
-                    <span className="font-medium">PDF格式</span>
+                    <div>
+                      <span className="font-medium">PDF格式</span>
+                      <div className="text-xs text-gray-500">包含知识图谱图片</div>
+                    </div>
                   </div>
-                  <Download className="h-4 w-4 text-gray-400" />
-                </button>
-                <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center">
-                    <FileText className="h-5 w-5 text-blue-600 mr-3" />
-                    <span className="font-medium">Markdown</span>
-                  </div>
-                  <Download className="h-4 w-4 text-gray-400" />
+                  {isCapturingImage ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                  ) : (
+                    <Download className="h-4 w-4 text-gray-400" />
+                  )}
                 </button>
                 <button 
-                  onClick={() => handleExportPDF('cards')}
-                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={handleExportMarkdown}
+                  disabled={isCapturingImage}
+                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center">
+                    <FileText className="h-5 w-5 text-blue-600 mr-3" />
+                    <div>
+                      <span className="font-medium">Markdown</span>
+                      <div className="text-xs text-gray-500">包含知识图谱图片</div>
+                    </div>
+                  </div>
+                  {isCapturingImage ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  ) : (
+                    <Download className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+                <button 
+                  onClick={() => handleExportPDFWithGraph('cards')}
+                  disabled={isCapturingImage}
+                  className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <Image className="h-5 w-5 text-green-600 mr-3" />
                     <span className="font-medium">学习卡片</span>
                   </div>
-                  <Download className="h-4 w-4 text-gray-400" />
+                  {isCapturingImage ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                  ) : (
+                    <Download className="h-4 w-4 text-gray-400" />
+                  )}
                 </button>
+                
+                {/* 单独的知识图谱图片导出按钮 */}
+                {useCanvasView && (
+                  <button 
+                    onClick={handleExportGraphImage}
+                    disabled={isCapturingImage}
+                    className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-center">
+                      <Camera className="h-5 w-5 text-purple-600 mr-3" />
+                      <div>
+                        <span className="font-medium">知识图谱图片</span>
+                        <div className="text-xs text-gray-500">Canvas视图截图</div>
+                      </div>
+                    </div>
+                    {isCapturingImage ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                    ) : (
+                      <Download className="h-4 w-4 text-gray-400" />
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 

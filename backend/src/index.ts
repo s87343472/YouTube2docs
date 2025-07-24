@@ -187,10 +187,10 @@ async function registerRoutes() {
     // await fastify.register(conceptRoutes)
     // logger.info('Concept routes registered', undefined, {}, LogCategory.SERVER)
     
-    // Import and register export routes - temporarily disabled due to compilation errors
-    // const { exportRoutes } = await import('./routes/exportRoutes')
-    // await fastify.register(exportRoutes)
-    // logger.info('Export routes registered', undefined, {}, LogCategory.SERVER)
+    // Import and register export routes
+    const { exportRoutes } = await import('./routes/exportRoutes')
+    await fastify.register(exportRoutes)
+    logger.info('Export routes registered', undefined, {}, LogCategory.SERVER)
     
     // Import and register new Auth routes (replaces Better Auth)
     const { authRoutes } = await import('./routes/authRoutes')
@@ -206,6 +206,11 @@ async function registerRoutes() {
     const { cacheRoutes } = await import('./routes/cacheRoutes')
     await fastify.register(cacheRoutes)
     logger.info('Cache routes registered', undefined, {}, LogCategory.SERVER)
+    
+    // Import and register admin routes
+    const { adminRoutes } = await import('./routes/adminRoutes')
+    await fastify.register(adminRoutes)
+    logger.info('Admin routes registered', undefined, {}, LogCategory.SERVER)
 
     // System info with enhanced details
     fastify.get('/system/info', async (request, reply) => {

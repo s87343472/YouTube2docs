@@ -25,7 +25,7 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
   "include": [
     "src/**/*"
@@ -33,9 +33,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests",
     "src/routes/conceptRoutes.ts",
-    "src/routes/exportRoutes.ts",
     "src/routes/quotaRoutes.ts",
     "src/routes/cacheRoutes.ts"
   ]
