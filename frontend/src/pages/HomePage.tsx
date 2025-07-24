@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { VideoAPI, APIUtils } from '../services/api'
 import { useQuotaCheck } from '../hooks/useQuotaCheck'
@@ -14,16 +14,57 @@ import {
   Sparkles,
   ArrowRight,
   Youtube,
-  CheckCircle
+  CheckCircle,
+  Share2,
+  Eye,
+  Clock,
+  Tag
 } from 'lucide-react'
+
+interface SharedContent {
+  id: string
+  shareId: string
+  title: string
+  description?: string
+  tags: string[]
+  viewCount: number
+  createdAt: string
+  videoInfo: {
+    title: string
+    url: string
+    duration: string
+  }
+}
 
 export const HomePage = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showQuotaModal, setShowQuotaModal] = useState(false)
   const [quotaCheckResult, setQuotaCheckResult] = useState<QuotaCheckResult | null>(null)
+  const [publicShares, setPublicShares] = useState<SharedContent[]>([])
+  const [sharesLoading, setSharesLoading] = useState(true)
   const navigate = useNavigate()
   const { checkAndRecordVideoProcessing, checking } = useQuotaCheck()
+
+  // 获取公开分享内容
+  useEffect(() => {
+    const fetchPublicShares = async () => {
+      try {
+        const response = await fetch('/api/shares/public?limit=8')
+        const data = await response.json()
+        
+        if (data.success && data.data.shares) {
+          setPublicShares(data.data.shares)
+        }
+      } catch (error) {
+        console.error('Failed to fetch public shares:', error)
+      } finally {
+        setSharesLoading(false)
+      }
+    }
+
+    fetchPublicShares()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -231,8 +272,103 @@ export const HomePage = () => {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Community Shares Section */}
       <section className="py-20 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              社区精选学习资料
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              看看其他用户分享的优质学习资料，发现更多有价值的内容
+            </p>
+          </div>
+
+          {sharesLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                  <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded mb-4"></div>
+                  <div className="flex justify-between">
+                    <div className="h-3 bg-gray-200 rounded w-16"></div>
+                    <div className="h-3 bg-gray-200 rounded w-20"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : publicShares.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {publicShares.map((share) => (
+                <Link
+                  key={share.id}
+                  to={`/shared/${share.shareId}`}
+                  className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 block group"
+                >
+                  <div className="flex items-start mb-3">
+                    <Share2 className="h-5 w-5 text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
+                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {share.title}
+                    </h3>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600 mb-3 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {share.videoInfo.title}
+                  </p>
+                  
+                  {share.description && (
+                    <p className="text-sm text-gray-500 mb-3 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {share.description}
+                    </p>
+                  )}
+                  
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <div className="flex items-center">
+                      <Eye className="h-3 w-3 mr-1" />
+                      {share.viewCount}
+                    </div>
+                    <div className="flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {share.videoInfo.duration}
+                    </div>
+                  </div>
+                  
+                  {share.tags.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {share.tags.slice(0, 2).map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
+                        >
+                          <Tag className="h-2 w-2 mr-1" />
+                          {tag}
+                        </span>
+                      ))}
+                      {share.tags.length > 2 && (
+                        <span className="text-xs text-gray-500">
+                          +{share.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Share2 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">暂无分享内容</h3>
+              <p className="text-gray-600">
+                成为第一个分享学习资料的用户吧！
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">

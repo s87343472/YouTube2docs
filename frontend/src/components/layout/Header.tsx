@@ -2,15 +2,17 @@ import { Link } from 'react-router-dom'
 import { Play, Menu, X, User, LogOut, Crown } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../AuthProvider'
-import { authClient } from '../../lib/auth-client'
+import { useAdminAccess } from '../../hooks/useAdminAccess'
+import { signOut } from '../../lib/auth-client'
 // import { QuotaDisplay } from '../QuotaDisplay' // Commented out as it's not used
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const { isLoggedIn, user } = useAuth()
+  const { isAdmin } = useAdminAccess()
 
   const handleSignOut = async () => {
-    await authClient.signOut()
+    await signOut()
   }
 
   return (
@@ -47,12 +49,29 @@ export const Header = () => {
             >
               套餐价格
             </Link>
-            <Link 
-              to="/api-test" 
-              className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
-            >
-              API测试
-            </Link>
+            {/* 管理员专用链接 */}
+            {isAdmin && (
+              <>
+                <Link 
+                  to="/api-test" 
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+                >
+                  API测试
+                </Link>
+                <Link 
+                  to="/canvas-test" 
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+                >
+                  Canvas图谱
+                </Link>
+                <Link 
+                  to="/error-test" 
+                  className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+                >
+                  状态测试
+                </Link>
+              </>
+            )}
             {isLoggedIn ? (
               <div className="flex items-center space-x-4">
                 <Link 
@@ -131,13 +150,32 @@ export const Header = () => {
               >
                 套餐价格
               </Link>
-              <Link
-                to="/api-test"
-                className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                API测试
-              </Link>
+              {/* 管理员专用链接 */}
+              {isAdmin && (
+                <>
+                  <Link
+                    to="/api-test"
+                    className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    API测试
+                  </Link>
+                  <Link
+                    to="/canvas-test"
+                    className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Canvas图谱
+                  </Link>
+                  <Link
+                    to="/error-test"
+                    className="block px-3 py-2 text-gray-600 hover:text-gray-900 font-medium"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    状态测试
+                  </Link>
+                </>
+              )}
               {isLoggedIn ? (
                 <>
                   <Link

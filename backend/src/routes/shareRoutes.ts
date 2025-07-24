@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { ShareService } from '../services/shareService'
+import { requireAuth, optionalAuth } from '../middleware/authMiddleware'
 // import { shareCreateRateLimit } from '../middleware/rateLimitMiddleware' // Temporarily disabled
 
 /**
@@ -12,6 +13,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * POST /api/shares
    */
   fastify.post('/shares', {
+    preHandler: [requireAuth], // 需要认证
     // preHandler: [shareCreateRateLimit], // Temporarily disabled
     schema: {
       body: {
@@ -57,8 +59,17 @@ export async function shareRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      // TODO: 从认证中间件获取用户ID
-      const userId = '1' // 临时硬编码，实际应该从JWT token获取
+      // 从认证中间件获取用户ID
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: {
+            message: '用户未认证',
+            code: 'USER_NOT_AUTHENTICATED'
+          }
+        })
+      }
       
       const { videoProcessId, title, description, tags, isPublic } = request.body
       
@@ -96,6 +107,50 @@ export async function shareRoutes(fastify: FastifyInstance) {
     }
   })
   
+  /**
+   * 获取公开分享列表（用于首页展示，无需认证）
+   * GET /api/shares/public
+   */
+  fastify.get('/shares/public', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', minimum: 1, maximum: 50, default: 12 }
+        }
+      }
+    }
+  }, async (request: FastifyRequest<{
+    Querystring: { limit?: number }
+  }>, reply: FastifyReply) => {
+    try {
+      const limit = request.query.limit || 12
+      
+      console.log(`🌐 Getting public shares, limit: ${limit}`)
+      
+      const publicShares = await ShareService.getPublicShares(limit)
+      
+      reply.send({
+        success: true,
+        data: {
+          shares: publicShares,
+          total: publicShares.length
+        }
+      })
+      
+    } catch (error) {
+      console.error('❌ Get public shares failed:', error)
+      
+      reply.code(500).send({
+        success: false,
+        error: {
+          message: '获取公开分享列表失败',
+          code: 'PUBLIC_SHARES_GET_FAILED'
+        }
+      })
+    }
+  })
+
   /**
    * 获取公开分享内容（无需认证）
    * GET /api/shares/:shareId
@@ -165,6 +220,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * GET /api/shares
    */
   fastify.get('/shares', {
+    preHandler: [requireAuth], // 需要认证
     schema: {
       querystring: {
         type: 'object',
@@ -178,8 +234,17 @@ export async function shareRoutes(fastify: FastifyInstance) {
     Querystring: { page?: number; limit?: number }
   }>, reply: FastifyReply) => {
     try {
-      // TODO: 从认证中间件获取用户ID
-      const userId = '1' // 临时硬编码，实际应该从JWT token获取
+      // 从认证中间件获取用户ID
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: {
+            message: '用户未认证',
+            code: 'USER_NOT_AUTHENTICATED'
+          }
+        })
+      }
       
       console.log(`📋 Getting shares for user: ${userId}`)
       
@@ -212,6 +277,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * GET /api/shares/:shareId/analytics
    */
   fastify.get('/shares/:shareId/analytics', {
+    preHandler: [requireAuth], // 需要认证
     schema: {
       params: {
         type: 'object',
@@ -225,8 +291,17 @@ export async function shareRoutes(fastify: FastifyInstance) {
     Params: { shareId: string }
   }>, reply: FastifyReply) => {
     try {
-      // TODO: 从认证中间件获取用户ID
-      const userId = '1' // 临时硬编码，实际应该从JWT token获取
+      // 从认证中间件获取用户ID
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: {
+            message: '用户未认证',
+            code: 'USER_NOT_AUTHENTICATED'
+          }
+        })
+      }
       const { shareId } = request.params
       
       console.log(`📊 Getting analytics for share: ${shareId} by user: ${userId}`)
@@ -256,6 +331,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * PUT /api/shares/:shareId
    */
   fastify.put('/shares/:shareId', {
+    preHandler: [requireAuth], // 需要认证
     schema: {
       params: {
         type: 'object',
@@ -288,8 +364,17 @@ export async function shareRoutes(fastify: FastifyInstance) {
     }
   }>, reply: FastifyReply) => {
     try {
-      // TODO: 从认证中间件获取用户ID
-      const userId = '1' // 临时硬编码，实际应该从JWT token获取
+      // 从认证中间件获取用户ID
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: {
+            message: '用户未认证',
+            code: 'USER_NOT_AUTHENTICATED'
+          }
+        })
+      }
       const { shareId } = request.params
       
       console.log(`✏️ Updating share: ${shareId} by user: ${userId}`)
@@ -324,6 +409,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
    * DELETE /api/shares/:shareId
    */
   fastify.delete('/shares/:shareId', {
+    preHandler: [requireAuth], // 需要认证
     schema: {
       params: {
         type: 'object',
@@ -337,8 +423,17 @@ export async function shareRoutes(fastify: FastifyInstance) {
     Params: { shareId: string }
   }>, reply: FastifyReply) => {
     try {
-      // TODO: 从认证中间件获取用户ID
-      const userId = '1' // 临时硬编码，实际应该从JWT token获取
+      // 从认证中间件获取用户ID
+      const userId = request.user?.id
+      if (!userId) {
+        return reply.code(401).send({
+          success: false,
+          error: {
+            message: '用户未认证',
+            code: 'USER_NOT_AUTHENTICATED'
+          }
+        })
+      }
       const { shareId } = request.params
       
       console.log(`🗑️ Deleting share: ${shareId} by user: ${userId}`)

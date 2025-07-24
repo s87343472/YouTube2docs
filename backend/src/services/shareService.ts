@@ -159,7 +159,7 @@ export class ShareService {
         FROM shared_content sc
         JOIN video_processes vp ON sc.video_process_id = vp.id
         WHERE sc.user_id = $1
-        ORDER BY sc."createdAt" DESC
+        ORDER BY sc.created_at DESC
       `
       
       const result = await db.query(query, [userId])
@@ -322,6 +322,35 @@ export class ShareService {
   }
   
   /**
+   * 获取公开分享列表（用于首页展示）
+   */
+  static async getPublicShares(limit: number = 12): Promise<SharedContent[]> {
+    const db = pool
+    
+    try {
+      const query = `
+        SELECT 
+          sc.*,
+          vp.video_title,
+          vp.youtube_url,
+          vp.duration
+        FROM shared_content sc
+        JOIN video_processes vp ON sc.video_process_id = vp.id
+        WHERE sc.is_public = true
+        ORDER BY sc.created_at DESC
+        LIMIT $1
+      `
+      
+      const result = await db.query(query, [limit])
+      return result.rows.map((row: any) => this.formatSharedContent(row))
+      
+    } catch (error) {
+      console.error('❌ Failed to get public shares:', error)
+      throw new Error(`获取公开分享列表失败: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  /**
    * 删除分享
    */
   static async deleteShare(shareId: string, userId: string): Promise<void> {
@@ -376,8 +405,8 @@ export class ShareService {
       },
       learningMaterial: row.learning_material || {},
       isPublic: row.is_public,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
       viewCount: row.view_count || 0,
       likeCount: row.like_count || 0,
       title: row.title,
@@ -404,8 +433,8 @@ export class ShareService {
       },
       learningMaterial: row.learning_material || {},
       isPublic: row.is_public,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
       viewCount: row.view_count || 0,
       likeCount: row.like_count || 0,
       title: row.title,

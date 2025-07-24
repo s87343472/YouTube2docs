@@ -6,8 +6,8 @@ export interface User {
   plan: 'free' | 'basic' | 'pro' | 'enterprise'
   monthly_quota: number
   used_quota: number
-  createdAt: Date
-  updatedAt: Date
+  created_at: Date
+  updated_at: Date
 }
 
 // Video processing types
@@ -23,8 +23,8 @@ export interface VideoProcess {
   result_data?: LearningMaterial
   error_message?: string
   processing_time?: number
-  createdAt: Date
-  updatedAt: Date
+  created_at: Date
+  updated_at: Date
 }
 
 // Learning material structure
@@ -111,7 +111,7 @@ export interface KnowledgeEdge {
   id: string
   source: string
   target: string
-  type: 'prerequisite' | 'supports' | 'applies_to' | 'extends' | 'conflicts' | 'similar'
+  type: 'prerequisite' | 'supports' | 'applies_to' | 'extends' | 'conflicts' | 'similar' | 'relates'
   strength: number
   description: string
   bidirectional?: boolean
