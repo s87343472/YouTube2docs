@@ -1,33 +1,42 @@
 import { os } from '@orpc/server'
 import { z } from 'zod/v4'
-import { $ } from 'zx'
+import { $, tempdir } from 'zx'
 
-const SubtitleFormatSchema = z.object({
-	ext: z.string(),
-	url: z.url(),
-	name: z.string(),
-})
-
-const SubtitlesSchema = z.record(z.string(), z.array(SubtitleFormatSchema))
-
-const YouTubeJSONSchema = z.object({
+const VideoInfoSchema = z.object({
 	title: z.string(),
-	subtitles: SubtitlesSchema,
+	duration: z.number(),
+	thumbnail: z.url(),
 })
 
-const getSubtitles = os
+const getVideoInfo = os
 	.input(z.object({ url: z.string() }))
 	.handler(async ({ input }) => {
 		const { url } = input
 
-		const output = await $`yt-dlp -O "%(.{title,subtitles})#j" ${url}`
+		const output = await $`yt-dlp -O "%(.{title,duration,thumbnail})#j" ${url}`
 
-		return YouTubeJSONSchema.parse(output.json())
+		return VideoInfoSchema.parse(output.json())
+	})
+
+const tempDirPath = tempdir()
+
+const getVideoAudio = os
+	.input(z.object({ url: z.string() }))
+	.handler(async ({ input }) => {
+		const { url } = input
+
+		const output =
+			await $`yt-dlp -P ${tempDirPath} -x --audio-format mp3 -O filename ${url}`
+
+		const filePath = output.stdout
+
+		return { filePath }
 	})
 
 const router = {
 	video: {
-		subtitles: getSubtitles,
+		info: getVideoInfo,
+		audio: getVideoAudio,
 	},
 }
 
