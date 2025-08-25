@@ -1,46 +1,16 @@
-import ky from 'ky'
-import invariant from 'tiny-invariant'
-import { z } from 'zod/v4'
-import { $ } from 'zx'
+import { RPCHandler } from '@orpc/server/fetch'
+import { data } from 'react-router'
 import { type Route } from './+types/route'
+import router from './router'
 
-const SubtitleFormatSchema = z.object({
-	ext: z.string(),
-	url: z.url(),
-	name: z.string(),
-})
+const handler = new RPCHandler(router)
 
-const SubtitlesSchema = z.record(z.string(), z.array(SubtitleFormatSchema))
+export const loader = async ({ request }: Route.LoaderArgs) => {
+	const { response } = await handler.handle(request, {
+		prefix: '/api',
+	})
 
-const YouTubeJSONSchema = z.object({
-	title: z.string(),
-	subtitles: SubtitlesSchema,
-})
-
-export const action = async ({ request }: Route.ActionArgs) => {
-	const formData = await request.formData()
-
-	const url = new URL(formData.get('url') as string)
-
-	const output = await $`yt-dlp -O "%(.{title,subtitles})#j" ${url}`
-
-	const json = YouTubeJSONSchema.parse(output.json())
-
-	let srt: string | null = null
-
-	for (const subtitles of Object.values(json.subtitles)) {
-		for (const subtitle of subtitles) {
-			if (subtitle.ext === 'srt') {
-				console.log(subtitle.url)
-
-				srt = await ky.get(subtitle.url, { timeout: false }).text()
-			}
-		}
-	}
-
-	invariant(srt, 'SRT subtitle not found')
-
-	return {
-		srt,
-	}
+	return response ?? data('Not Found', { status: 404 })
 }
+
+export const action = loader
