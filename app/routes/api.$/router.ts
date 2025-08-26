@@ -91,8 +91,6 @@ Please provide the audio file you would like transcribed, and specify any partic
 			return {
 				text,
 			}
-		} catch (error) {
-			console.error({ error })
 		} finally {
 			await fs.remove(tempDirPath)
 		}
