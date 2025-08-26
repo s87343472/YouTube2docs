@@ -1,20 +1,15 @@
-import { createVertex } from '@ai-sdk/google-vertex'
+import speech from '@google-cloud/speech'
+import { Storage } from '@google-cloud/storage'
 import { os } from '@orpc/server'
-import { generateText } from 'ai'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 import { z } from 'zod/v4'
-import { $, tempdir, fs } from 'zx'
+import { $, path } from 'zx'
 
 if (import.meta.env.DEV) {
 	const envHttpProxyAgent = new EnvHttpProxyAgent()
 
 	setGlobalDispatcher(envHttpProxyAgent)
 }
-
-const vertex = createVertex({
-	project: 'ai-manga-translator',
-	location: 'us-east4',
-})
 
 const VideoInfoSchema = z.object({
 	title: z.string(),
@@ -32,67 +27,65 @@ const getVideoInfo = os
 		return VideoInfoSchema.parse(output.json())
 	})
 
+const BUCKET_NAME = 'youtube2docs'
+
+const speechClient = new speech.SpeechClient()
+
+const storage = new Storage()
+
 const getVideoAudio = os
 	.input(z.object({ url: z.string() }))
 	.handler(async ({ input }) => {
 		const { url } = input
 
-		const tempDirPath = tempdir()
+		const bucket = storage.bucket(BUCKET_NAME)
 
-		const output =
-			await $`yt-dlp -x -P ${tempDirPath} --restrict-filenames --audio-format mp3 --print after_move:filepath ${url}`
+		const filenameOutput =
+			await $`yt-dlp -x --audio-format mp3 --restrict-filenames --print after_move:filepath ${url}`
 
-		const filePath = output.valueOf()
+		const filename = path.basename(filenameOutput.valueOf())
+
+		const file = bucket.file(filename)
+
+		const writeStream = file.createWriteStream({
+			resumable: false,
+			contentType: 'audio/mpeg',
+		})
+
+		await $`yt-dlp -x --audio-format mp3 -o - ${url}`.pipe(writeStream)
 
 		try {
-			const { text } = await generateText({
-				model: vertex('gemini-2.5-flash-lite'),
-				messages: [
-					{
-						role: 'user',
-						content: [
-							{
-								type: 'text',
-								text: `You are an expert audio transcriptionist. Your task is to convert spoken audio content into accurate written text.
+			const uri = `gs://${BUCKET_NAME}/${filename}`
 
-**Instructions:**
-1. Listen carefully to the provided audio file
-2. Transcribe all spoken words verbatim, including:
-   - All dialogue and monologue
-   - Speaker identification when multiple speakers are present
-   - Filler words (um, uh, etc.) if requested
-3. Format the transcription clearly with proper punctuation and paragraph breaks
-4. Note any unclear or inaudible sections as [inaudible] or [unclear]
+			const start = Date.now()
 
-**Output Format:**
-- Use standard punctuation and capitalization
-- Separate different speakers with "Speaker 1:", "Speaker 2:", etc., or use actual names if known
-- Include timestamps every 30 seconds in brackets [00:30], [01:00], etc.
-- Place any background sounds or non-verbal audio in brackets [music playing], [door closes], etc.
-
-**Additional Requirements:**
-- Maintain the original meaning and tone
-- Do not correct grammar unless specifically requested
-- If technical terms or proper nouns are unclear, make your best approximation and mark with [?]
-- Specify the total duration of the audio file
-
-Please provide the audio file you would like transcribed, and specify any particular formatting preferences or special requirements for this transcription.`,
-							},
-							{
-								type: 'file',
-								data: fs.readFileSync(filePath),
-								mediaType: 'audio/mpeg',
-							},
-						],
-					},
-				],
+			const [operation] = await speechClient.longRunningRecognize({
+				audio: {
+					uri,
+				},
+				config: {
+					model: 'video',
+					encoding: 'MP3',
+					sampleRateHertz: 16000,
+					enableWordTimeOffsets: true,
+					enableAutomaticPunctuation: true,
+					languageCode: 'en-US',
+				},
 			})
+
+			const [response] = await operation.promise()
+
+			const text = response.results
+				.map((r) => r.alternatives?.[0]?.transcript ?? '')
+				.join('\n')
 
 			return {
 				text,
+				result: response.results,
+				end: Date.now() - start,
 			}
 		} finally {
-			await fs.remove(tempDirPath)
+			await file.delete()
 		}
 	})
 

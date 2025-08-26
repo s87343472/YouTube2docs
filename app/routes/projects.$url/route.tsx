@@ -1,15 +1,13 @@
-import { Container, Image, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Code, Container, Skeleton, Stack, Text } from '@mantine/core'
 import { Suspense } from 'react'
 import { Await } from 'react-router'
 import orpc from '../api.$/orpc'
 import { type Route } from './+types/route'
 
 export const clientLoader = async ({ params }: Route.ClientLoaderArgs) => {
-	const info = orpc.video.info({ url: params.url })
-
 	const audio = orpc.video.audio({ url: params.url })
 
-	return { info, audio }
+	return { audio }
 }
 
 const ProjectPage = ({ loaderData }: Route.ComponentProps) => {
@@ -17,19 +15,13 @@ const ProjectPage = ({ loaderData }: Route.ComponentProps) => {
 		<Container className="w-full">
 			<Stack>
 				<Suspense fallback={<Skeleton className="h-32 w-full" />}>
-					<Await resolve={loaderData.info}>
-						{(info) => (
+					<Await resolve={loaderData.audio}>
+						{(audio) => (
 							<Stack>
-								<Title>{info.title}</Title>
-								<Image src={info.thumbnail} />
-								<Text>duration:{info.duration}</Text>
+								<Text>{audio.text}</Text>
+								<Code block>{JSON.stringify(audio.result, null, 2)}</Code>
 							</Stack>
 						)}
-					</Await>
-				</Suspense>
-				<Suspense fallback={<Skeleton className="h-32 w-full" />}>
-					<Await resolve={loaderData.audio}>
-						{(audio) => <Text>{audio.text}</Text>}
 					</Await>
 				</Suspense>
 			</Stack>
