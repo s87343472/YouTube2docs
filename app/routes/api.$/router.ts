@@ -1,9 +1,10 @@
+import path from 'node:path'
 import speech from '@google-cloud/speech'
 import { Storage } from '@google-cloud/storage'
 import { os } from '@orpc/server'
+import { execa } from 'execa'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 import { z } from 'zod/v4'
-import { $, path } from 'zx'
 
 if (import.meta.env.DEV) {
 	const envHttpProxyAgent = new EnvHttpProxyAgent()
@@ -22,9 +23,10 @@ const getVideoInfo = os
 	.handler(async ({ input }) => {
 		const { url } = input
 
-		const output = await $`yt-dlp -O "%(.{title,duration,thumbnail})#j" ${url}`
+		const output =
+			await execa`yt-dlp -O "%(.{title,duration,thumbnail})#j" ${url}`
 
-		return VideoInfoSchema.parse(output.json())
+		return VideoInfoSchema.parse(JSON.parse(output.stdout))
 	})
 
 const BUCKET_NAME = 'youtube2docs'
@@ -40,11 +42,17 @@ const getVideoAudio = os
 
 		const bucket = storage.bucket(BUCKET_NAME)
 
-		const filenameOutput =
-			await $`yt-dlp -x --audio-format mp3 --restrict-filenames --print after_move:filepath ${url}`
+		const filenameProcess = await execa('yt-dlp', [
+			'-x',
+			'--audio-format',
+			'mp3',
+			'--restrict-filenames',
+			'--print',
+			'after_move:filepath',
+			url,
+		])
 
-		const filename = path.basename(filenameOutput.valueOf())
-
+		const filename = path.basename(filenameProcess.stdout)
 		const file = bucket.file(filename)
 
 		const writeStream = file.createWriteStream({
@@ -52,11 +60,27 @@ const getVideoAudio = os
 			contentType: 'audio/mpeg',
 		})
 
-		await $`yt-dlp -x --audio-format mp3 -o - ${url}`.pipe(writeStream)
+		const audioProcess = execa('yt-dlp', [
+			'-x',
+			'--audio-format',
+			'mp3',
+			'-o',
+			'-',
+			url,
+		])
+
+		audioProcess.stdout.pipe(writeStream)
+
+		await new Promise((resolve, reject) => {
+			writeStream.on('finish', resolve)
+			writeStream.on('error', reject)
+		})
+
+		await audioProcess
+
+		const uri = `gs://${BUCKET_NAME}/${filename}`
 
 		try {
-			const uri = `gs://${BUCKET_NAME}/${filename}`
-
 			const start = Date.now()
 
 			const [operation] = await speechClient.longRunningRecognize({
