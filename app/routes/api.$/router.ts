@@ -35,6 +35,14 @@ const speechClient = new speech.SpeechClient()
 
 const storage = new Storage()
 
+const AUDIO_FORMAT = 'mp3'
+
+const AUDIO_CONTENT_TYPE = 'audio/mpeg'
+
+const AUDIO_ENCODING = 'MP3'
+
+const AUDIO_SAMPLE_RATE = 16000
+
 const getVideoAudio = os
 	.input(z.object({ url: z.string() }))
 	.handler(async ({ input }) => {
@@ -43,27 +51,31 @@ const getVideoAudio = os
 		const bucket = storage.bucket(BUCKET_NAME)
 
 		const filenameProcess = await execa('yt-dlp', [
-			'-x',
-			'--audio-format',
-			'mp3',
 			'--restrict-filenames',
 			'--print',
-			'after_move:filepath',
+			'filename',
 			url,
 		])
 
-		const filename = path.basename(filenameProcess.stdout)
+		const originalFile = filenameProcess.stdout
+
+		const filename =
+			path.basename(originalFile, path.extname(originalFile)) +
+			`.${AUDIO_FORMAT}`
+
 		const file = bucket.file(filename)
 
 		const writeStream = file.createWriteStream({
 			resumable: false,
-			contentType: 'audio/mpeg',
+			contentType: AUDIO_CONTENT_TYPE,
 		})
 
 		const audioProcess = execa('yt-dlp', [
 			'-x',
 			'--audio-format',
-			'mp3',
+			AUDIO_FORMAT,
+			'--postprocessor-args',
+			`ffmpeg: -ar ${AUDIO_SAMPLE_RATE}`,
 			'-o',
 			'-',
 			url,
@@ -89,8 +101,8 @@ const getVideoAudio = os
 				},
 				config: {
 					model: 'video',
-					encoding: 'MP3',
-					sampleRateHertz: 16000,
+					encoding: AUDIO_ENCODING,
+					sampleRateHertz: AUDIO_SAMPLE_RATE,
 					enableWordTimeOffsets: true,
 					enableAutomaticPunctuation: true,
 					languageCode: 'en-US',
