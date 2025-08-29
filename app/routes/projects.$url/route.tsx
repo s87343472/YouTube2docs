@@ -5,9 +5,9 @@ import orpc from '../api.$/orpc'
 import { type Route } from './+types/route'
 
 export const clientLoader = async ({ params }: Route.ClientLoaderArgs) => {
-	const audio = orpc.video.audio({ url: params.url })
+	const transcript = orpc.video.transcript({ url: params.url })
 
-	return { audio }
+	return { transcript }
 }
 
 const ProjectPage = ({ loaderData }: Route.ComponentProps) => {
@@ -15,11 +15,11 @@ const ProjectPage = ({ loaderData }: Route.ComponentProps) => {
 		<Container className="w-full">
 			<Stack>
 				<Suspense fallback={<Skeleton className="h-32 w-full" />}>
-					<Await resolve={loaderData.audio}>
-						{(audio) => (
+					<Await resolve={loaderData.transcript}>
+						{(transcript) => (
 							<Stack>
-								<Text>{audio.text}</Text>
-								<Code block>{JSON.stringify(audio.result, null, 2)}</Code>
+								<Text>{transcript.text}</Text>
+								<Code block>{JSON.stringify(transcript.result, null, 2)}</Code>
 							</Stack>
 						)}
 					</Await>

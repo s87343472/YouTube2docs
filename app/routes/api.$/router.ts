@@ -43,7 +43,7 @@ const AUDIO_ENCODING = 'MP3'
 
 const AUDIO_SAMPLE_RATE = 16000
 
-const getVideoAudio = os
+const getVideoTranscript = os
 	.input(z.object({ url: z.string() }))
 	.handler(async ({ input }) => {
 		const { url } = input
@@ -128,7 +128,7 @@ const getVideoAudio = os
 const router = {
 	video: {
 		info: getVideoInfo,
-		audio: getVideoAudio,
+		transcript: getVideoTranscript,
 	},
 }
 
