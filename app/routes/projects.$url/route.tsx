@@ -5,7 +5,7 @@ import orpc from '../api.$/orpc'
 import { type Route } from './+types/route'
 
 export const clientLoader = async ({ params }: Route.ClientLoaderArgs) => {
-	const transcript = orpc.video.transcript({ url: params.url })
+	const transcript = orpc.video.transcript_with_gemini({ url: params.url })
 
 	return { transcript }
 }

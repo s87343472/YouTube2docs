@@ -11,7 +11,7 @@ const getVideoTranscriptWithGemini = os
 		const { url } = input
 
 		const { text } = await generateText({
-			model: vertex('gemini-2.5-flash-lite'),
+			model: vertex('gemini-2.5-flash'),
 			messages: [
 				{
 					role: 'user',
