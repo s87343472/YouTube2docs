@@ -1,4 +1,4 @@
-import { Code, Container, Skeleton, Stack, Text } from '@mantine/core'
+import { Container, Skeleton, Stack, Text } from '@mantine/core'
 import { Suspense } from 'react'
 import { Await } from 'react-router'
 import orpc from '../api.$/orpc'
@@ -19,7 +19,6 @@ const ProjectPage = ({ loaderData }: Route.ComponentProps) => {
 						{(transcript) => (
 							<Stack>
 								<Text>{transcript.text}</Text>
-								<Code block>{JSON.stringify(transcript.result, null, 2)}</Code>
 							</Stack>
 						)}
 					</Await>
